@@ -60,7 +60,7 @@ $(TARGET).hex: $(TARGET).elf
 	$(OBJCOPY) -R .stack -R .bss -O ihex $(TARGET).elf $(TARGET).hex
 
 $(TARGET).elf: $(OBJECTS) $(LINKER_SCRIPT)
-	$(CC) $(LDFLAGS) $(LDLIBS) $(OBJECTS) -o $(TARGET).elf
+	$(CC) $(LDFLAGS) $(OBJECTS) $(LDLIBS) -o $(TARGET).elf
 
 $(TARGET).lss: $(TARGET).elf
 	$(OBJDUMP) -h -S $< > $@
