@@ -4,7 +4,7 @@ SOURCES = main.c
 
 LINKER_SCRIPT=stm32f103-bl20.ld
 
-OPENCM3 ?= /aux/sources/libopencm3
+OPENCM3 ?= ./libopencm3
 
 ##############################################################################
 
