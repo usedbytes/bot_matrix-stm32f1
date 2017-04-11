@@ -21,6 +21,7 @@
 
 #ifndef __USB_CDC_H__
 #define __USB_CDC_H__
+#include <stdbool.h>
 #include <stdlib.h>
 
 void usb_cdc_init(void);
