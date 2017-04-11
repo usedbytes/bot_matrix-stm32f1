@@ -1,6 +1,6 @@
 TARGET = main
 
-SOURCES = main.c usb_cdc.c
+SOURCES = main.c usb_cdc.c stdio.c
 
 LINKER_SCRIPT=stm32f103-bl20.ld
 
