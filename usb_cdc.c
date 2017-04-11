@@ -25,8 +25,28 @@
 #include <libopencm3/usb/usbd.h>
 #include <libopencm3/usb/cdc.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "usb_cdc.h"
+
+#define USB_MAX_PACKET0 64
+
+struct usb_ctx {
+	usbd_device *dev;
+	volatile bool dtr;
+
+	volatile size_t tx_len;
+	const uint8_t *volatile tx_buf;
+
+#define USB_RX_BUF_SIZE (2 * USB_MAX_PACKET0)
+#define USB_RX_BUF_END  (usb_ctx.rx_buf + USB_RX_BUF_SIZE)
+	uint8_t rx_buf[USB_RX_BUF_SIZE];
+	/* Producer writes to head, consumer reads from tail */
+	volatile uint8_t *volatile rx_head;
+	volatile uint8_t *volatile rx_tail;
+	volatile size_t rx_len;
+};
+static struct usb_ctx usb_ctx;
 
 static const struct usb_device_descriptor dev = {
 	.bLength = USB_DT_DEVICE_SIZE,
@@ -193,23 +213,17 @@ static int cdcacm_control_request(usbd_device *usbd_dev,
 	switch(req->bRequest) {
 		case USB_CDC_REQ_SET_CONTROL_LINE_STATE:
 		{
-			/*
-			 * This Linux cdc_acm driver requires this to be implemented
-			 * even though it's optional in the CDC spec, and we don't
-			 * advertise it in the ACM functional descriptor.
-			 */
-			char local_buf[10];
-			struct usb_cdc_notification *notif = (void *)local_buf;
+			usb_ctx.dtr = (req->wValue & 0x1);
 
-			/* We echo signals back to host as notification. */
-			notif->bmRequestType = 0xA1;
-			notif->bNotification = USB_CDC_NOTIFY_SERIAL_STATE;
-			notif->wValue = 0;
-			notif->wIndex = 0;
-			notif->wLength = 2;
-			local_buf[8] = req->wValue & 3;
-			local_buf[9] = 0;
-			// usbd_ep_write_packet(0x83, buf, 10);
+			/* Terminate any ongoing transmission */
+			if (!usb_ctx.dtr) {
+				gpio_set(GPIOC, GPIO13);
+				usb_ctx.tx_len = 0;
+				usb_ctx.tx_buf = NULL;
+			} else {
+				gpio_clear(GPIOC, GPIO13);
+			}
+
 			return 1;
 		}
 		case USB_CDC_REQ_SET_LINE_CODING:
@@ -223,22 +237,80 @@ static int cdcacm_control_request(usbd_device *usbd_dev,
 
 static void cdcacm_data_rx_cb(usbd_device *usbd_dev, uint8_t ep)
 {
+	(void)usbd_dev;
 	(void)ep;
-	char buf[64];
-	int len = usbd_ep_read_packet(usbd_dev, 0x01, buf, 64);
+	static uint8_t buf[USB_MAX_PACKET0];
+	uint8_t *p = buf;
+	int len;
 
-	if (len) {
-		usbd_ep_write_packet(usbd_dev, 0x82, buf, len);
-		buf[len] = 0;
+	len = usbd_ep_read_packet(usbd_dev, 0x01, buf, USB_MAX_PACKET0);
+	if (!len)
+		return;
+
+	/*
+	 * On overrun, we jump "tail" to the first non-overwritten byte,
+	 * and set rx_len to the buffer size
+	 * FIXME: Overrun reporting?
+	 */
+	if (len + usb_ctx.rx_len > USB_RX_BUF_SIZE) {
+		usb_ctx.rx_tail += (len + usb_ctx.rx_len) - USB_RX_BUF_SIZE;
+		usb_ctx.rx_len = USB_RX_BUF_SIZE;
+		if (usb_ctx.rx_tail >= USB_RX_BUF_END)
+			usb_ctx.rx_tail -= USB_RX_BUF_SIZE;
+	} else {
+		usb_ctx.rx_len += len;
+	}
+
+	/* Fill the rx_buf */
+	while (len--) {
+		*usb_ctx.rx_head++ = *p++;
+		if (usb_ctx.rx_head >= USB_RX_BUF_END)
+			usb_ctx.rx_head = usb_ctx.rx_buf;
 	}
 }
+
+static void cdcacm_data_tx_cb(usbd_device *usbd_dev, uint8_t ep)
+{
+	(void)usbd_dev;
+	(void)ep;
+	static bool done = false;
+
+	if (usb_ctx.tx_buf) {
+		uint32_t send = usb_ctx.tx_len;
+
+		if (done) {
+			usb_ctx.tx_buf = NULL;
+			done = false;
+			return;
+		}
+
+		if (send > USB_MAX_PACKET0)
+		       send = USB_MAX_PACKET0;
+
+		usbd_ep_write_packet(usb_ctx.dev, 0x82, usb_ctx.tx_buf, send);
+		usb_ctx.tx_len -= send;
+		usb_ctx.tx_buf += send;
+
+		/*
+		 * If the last packet was full (USB_MAX_PACKET0), then
+		 * we need to go around one more time to send a zero-length
+		 * packet, so don't set 'done'
+		 * Otherwise (or after our zero-length-packet), the next
+		 * interrupt will mark the end of transmission, so we can
+		 * set 'done' now and clear tx_buf at the next IRQ.
+		 */
+		if (!usb_ctx.tx_len && (send < USB_MAX_PACKET0))
+			done = true;
+	}
+}
+
 
 static void cdcacm_set_config(usbd_device *usbd_dev, uint16_t wValue)
 {
 	(void)wValue;
 
 	usbd_ep_setup(usbd_dev, 0x01, USB_ENDPOINT_ATTR_BULK, 64, cdcacm_data_rx_cb);
-	usbd_ep_setup(usbd_dev, 0x82, USB_ENDPOINT_ATTR_BULK, 64, NULL);
+	usbd_ep_setup(usbd_dev, 0x82, USB_ENDPOINT_ATTR_BULK, 64, cdcacm_data_tx_cb);
 	usbd_ep_setup(usbd_dev, 0x83, USB_ENDPOINT_ATTR_INTERRUPT, 16, NULL);
 
 	usbd_register_control_callback(usbd_dev,
@@ -265,14 +337,12 @@ static void reset_usb(void) {
 		      GPIO_CNF_INPUT_FLOAT, GPIO12);
 }
 
-static usbd_device *usbd_dev;
-
 void usb_wakeup_isr(void) {
-	usbd_poll(usbd_dev);
+	usbd_poll(usb_ctx.dev);
 }
 
 void usb_lp_can_rx0_isr(void) {
-	usbd_poll(usbd_dev);
+	usbd_poll(usb_ctx.dev);
 }
 
 void usb_cdc_init(void) {
@@ -280,18 +350,88 @@ void usb_cdc_init(void) {
 
 	/* GPIOA clock needed for reset operation */
 	rcc_periph_clock_enable(RCC_GPIOA);
-
 	reset_usb();
+
+	/* Initialise usb_ctx structure */
+	memset(&usb_ctx, 0, sizeof(usb_ctx));
+	usb_ctx.rx_head = usb_ctx.rx_buf;
+	usb_ctx.rx_tail = usb_ctx.rx_buf;
 
 	nvic_enable_irq(NVIC_USB_WAKEUP_IRQ);
 	nvic_enable_irq(NVIC_USB_LP_CAN_RX0_IRQ);
 
-	usbd_dev = usbd_init(&st_usbfs_v1_usb_driver,
+	usb_ctx.dev = usbd_init(&st_usbfs_v1_usb_driver,
 			&dev,
 			&config,
 			usb_strings,
 			3,
 			usbd_control_buffer,
 			sizeof(usbd_control_buffer));
-	usbd_register_set_config_callback(usbd_dev, cdcacm_set_config);
+	usbd_register_set_config_callback(usb_ctx.dev, cdcacm_set_config);
+}
+
+int usb_usart_recv(char *buf, size_t len, int timeout)
+{
+	size_t recv = len;
+	uint32_t msTicks = 1;
+	uint32_t end = msTicks + timeout;
+
+	while (recv) {
+		/*
+		 * Critical section - drain the rx_buf. Always try this first.
+		 * This should perhaps be done in chunks as we have interrupts
+		 * disabled.
+		 */
+		nvic_disable_irq(NVIC_USB_LP_CAN_RX0_IRQ);
+		while (usb_ctx.rx_len && recv) {
+			*buf++ = *usb_ctx.rx_tail++;
+			if (usb_ctx.rx_tail >= USB_RX_BUF_END)
+				usb_ctx.rx_tail = usb_ctx.rx_buf;
+			usb_ctx.rx_len--;
+			recv--;
+		}
+		nvic_enable_irq(NVIC_USB_LP_CAN_RX0_IRQ);
+
+		/* Wait for more data or timeout */
+		while (!usb_ctx.rx_len && timeout >= 0 && msTicks < end);
+
+		if (timeout >= 0 && msTicks >= end)
+			break;
+	}
+
+	return len - recv;
+}
+
+void usb_usart_send(const char *buf, size_t len)
+{
+	if (!usb_ctx.dtr)
+		return;
+
+	usb_ctx.tx_len = len;
+	usb_ctx.tx_buf = (const uint8_t *)buf;
+	cdcacm_data_tx_cb(usb_ctx.dev, 0x82);
+
+	/* Wait for finish */
+	while(usb_ctx.tx_buf != NULL);
+}
+
+void usb_usart_print(const char *str)
+{
+	size_t i = 0;
+	while (str[i++]);
+
+	usb_usart_send(str, i);
+}
+
+void usb_usart_flush_rx(void)
+{
+	nvic_disable_irq(NVIC_USB_LP_CAN_RX0_IRQ);
+	usb_ctx.rx_head = usb_ctx.rx_tail = usb_ctx.rx_buf;
+	usb_ctx.rx_len = 0;
+	nvic_enable_irq(NVIC_USB_LP_CAN_RX0_IRQ);
+}
+
+bool usb_usart_dtr(void)
+{
+	return usb_ctx.dtr;
 }

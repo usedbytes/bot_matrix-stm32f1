@@ -12,6 +12,8 @@ static void setup_gpio(void) {
 
 int main(void)
 {
+	char buf[16];
+
 	rcc_clock_setup_in_hse_8mhz_out_72mhz();
 
 	rcc_periph_clock_enable(RCC_GPIOC);
@@ -20,8 +22,10 @@ int main(void)
 
 	usb_cdc_init();
 
+	while (!usb_usart_dtr());
+
 	while (1) {
-		gpio_toggle(GPIOC, GPIO13);
-		__asm__("wfi");
+		usb_usart_recv(buf, 1, -1);
+		usb_usart_send(buf, 1);
 	}
 }

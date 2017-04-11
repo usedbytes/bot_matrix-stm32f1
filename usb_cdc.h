@@ -21,7 +21,14 @@
 
 #ifndef __USB_CDC_H__
 #define __USB_CDC_H__
+#include <stdlib.h>
 
 void usb_cdc_init(void);
+
+int usb_usart_recv(char *buf, size_t len, int timeout);
+void usb_usart_send(const char *buf, size_t len);
+void usb_usart_print(const char *str);
+void usb_usart_flush_rx(void);
+bool usb_usart_dtr(void);
 
 #endif /* __USB_CDC_H__ */
