@@ -25,7 +25,7 @@ int main(void)
 
 	usb_cdc_init();
 
-	pwm_timer_init(TIM2, 20000);
+	pwm_timer_init(TIM2, 200000);
 	pwm_timer_enable(TIM2);
 
 	pwm_channel_set_duty(TIM2, TIM_OC1, 0x8000);
