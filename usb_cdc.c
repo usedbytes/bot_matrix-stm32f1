@@ -31,6 +31,8 @@
 
 #define USB_MAX_PACKET0 64
 
+extern volatile uint32_t msTicks;
+
 struct usb_ctx {
 	usbd_device *dev;
 	volatile bool dtr;
@@ -373,7 +375,6 @@ void usb_cdc_init(void) {
 int usb_usart_recv(char *buf, size_t len, int timeout)
 {
 	size_t recv = len;
-	uint32_t msTicks = 1;
 	uint32_t end = msTicks + timeout;
 
 	while (recv) {
