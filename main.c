@@ -1,5 +1,6 @@
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
+#include <libopencm3/cm3/systick.h>
 #include <libopencm3/stm32/timer.h>
 #include <libopencm3/cm3/nvic.h>
 #include <stdio.h>
@@ -13,6 +14,21 @@ static void setup_gpio(void) {
 	GPIOC_CRH |= (GPIO_MODE_OUTPUT_2_MHZ << ((13 - 8) * 4));
 }
 
+volatile uint32_t msTicks;
+
+void sys_tick_handler(void)
+{
+	msTicks++;
+}
+
+static void setup_systick(void)
+{
+	systick_set_clocksource(STK_CSR_CLKSOURCE_AHB_DIV8);
+	systick_set_reload(8999);
+	systick_interrupt_enable();
+	systick_counter_enable();
+}
+
 int main(void)
 {
 	rcc_clock_setup_in_hse_8mhz_out_72mhz();
@@ -22,6 +38,7 @@ int main(void)
 	rcc_periph_clock_enable(RCC_AFIO);
 
 	setup_gpio();
+	setup_systick();
 
 	usb_cdc_init();
 
