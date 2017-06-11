@@ -1,6 +1,6 @@
 TARGET = main
 
-SOURCES = main.c usb_cdc.c stdio.c pwm.c
+SOURCES = main.c usb_cdc.c stdio.c pwm.c counter.c
 
 LINKER_SCRIPT=stm32f103-bl20.ld
 
