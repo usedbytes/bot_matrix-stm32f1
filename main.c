@@ -54,6 +54,14 @@ int main(void)
 	pwm_channel_set_duty(TIM2, TIM_OC4, 0x1000);
 	pwm_channel_enable(TIM2, TIM_OC4);
 
+	pwm_channel_set_duty(TIM2, TIM_OC1, 10000);
+
+	gpio_set_mode(GPIOC, GPIO_MODE_OUTPUT_2_MHZ,
+		      GPIO_CNF_OUTPUT_PUSHPULL,
+		      GPIO14 | GPIO15);
+	gpio_set(GPIOC, GPIO14);
+	gpio_clear(GPIOC, GPIO15);
+
 	while (!usb_usart_dtr());
 
 	printf("\r\nPWM Test Application\r\n");
