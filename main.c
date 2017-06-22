@@ -27,6 +27,15 @@ static void setup_systick(void)
 	systick_counter_enable();
 }
 
+static void delay_ms(uint32_t ms)
+{
+	uint32_t end = msTicks + ms;
+	if (end < msTicks) {
+		while (msTicks <= 0xffffffff);
+	}
+	while (msTicks < end);
+}
+
 int main(void)
 {
 	char buf[16];
@@ -65,9 +74,7 @@ int main(void)
 		printf("Blinking with a delay of %d\r\n", delay);
 		for (j = 0; j < 10; j++) {
 			gpio_toggle(GPIOC, GPIO13);
-			for (i = 0; i < delay; i++) {	/* Wait a bit. */
-				__asm__("NOP");
-			}
+			delay_ms(delay);
 		}
 	}
 	return 0;
