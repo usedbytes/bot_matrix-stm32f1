@@ -1,32 +1,25 @@
+#include <libopencm3/stm32/dma.h>
+#include <libopencm3/stm32/exti.h>
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
-#include <libopencm3/cm3/systick.h>
 #include <libopencm3/stm32/timer.h>
+#include <libopencm3/stm32/spi.h>
 #include <libopencm3/cm3/nvic.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "pwm.h"
 #include "usb_cdc.h"
+#include "spi.h"
+
+#include "systick.h"
+
+#define TRACE() printf("%s:%d\r\n", __func__, __LINE__)
 
 static void setup_gpio(void) {
 	RCC_APB2ENR |= RCC_APB2ENR_IOPCEN;
 	GPIOC_CRH = (GPIO_CNF_OUTPUT_PUSHPULL << (((13 - 8) * 4) + 2));
 	GPIOC_CRH |= (GPIO_MODE_OUTPUT_2_MHZ << ((13 - 8) * 4));
-}
-
-volatile uint32_t msTicks;
-
-void sys_tick_handler(void)
-{
-	msTicks++;
-}
-
-static void setup_systick(void)
-{
-	systick_set_clocksource(STK_CSR_CLKSOURCE_AHB_DIV8);
-	systick_set_reload(8999);
-	systick_interrupt_enable();
-	systick_counter_enable();
 }
 
 int main(void)
@@ -36,11 +29,15 @@ int main(void)
 	rcc_periph_clock_enable(RCC_GPIOA);
 	rcc_periph_clock_enable(RCC_TIM2);
 	rcc_periph_clock_enable(RCC_AFIO);
+	rcc_periph_clock_enable(RCC_SPI1);
+	rcc_periph_clock_enable(RCC_DMA1);
 
+	systick_init();
 	setup_gpio();
-	setup_systick();
 
 	usb_cdc_init();
+	spi_init();
+	spi_slave_enable(SPI1);
 
 	pwm_timer_init(TIM2, 200000);
 	pwm_timer_enable(TIM2);
@@ -62,28 +59,21 @@ int main(void)
 	gpio_set(GPIOC, GPIO14);
 	gpio_clear(GPIOC, GPIO15);
 
+	gpio_set(GPIOC, GPIO13);
+
 	while (!usb_usart_dtr());
+	printf("\r\nStandard I/O Example.\r\n");
 
-	printf("\r\nPWM Test Application\r\n");
+	spi_dump_lists();
 
+	struct spi_pl_packet *pkt;
 	while (1) {
-		int duty = 0;
-		char local_buf[32];
-
-		while (1) {
-			printf("Enter the duty cycle (0-65535) : ");
-			fflush(stdout);
-			fgets(local_buf, 32, stdin);
-			duty = atoi(local_buf);
-			if ((duty < 0) || (duty > 65535)) {
-				printf("Error: expected 0 <= duty <= 65535\r\n");
-			} else {
-				break;
-			}
+		delay_ms(10);
+		spi_dump_trace();
+		while ((pkt = spi_receive_packet())) {
+			spi_send_packet(pkt);
 		}
-
-		printf("Setting duty %d\r\n", duty);
-		pwm_channel_set_duty(TIM2, TIM_OC1, duty);
 	}
+
 	return 0;
 }

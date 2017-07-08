@@ -110,8 +110,6 @@ get_buffered_line(void) {
 int
 _write(int fd, char *ptr, int len)
 {
-	int i = 0;
-
 	/*
 	 * Write "len" of char from "ptr" to file id "fd"
 	 * Return number of char written.
