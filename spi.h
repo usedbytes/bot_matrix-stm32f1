@@ -25,6 +25,7 @@ struct spi_pl_packet {
 	uint8_t type;
 	uint8_t nparts;
 #define SPI_FLAG_CRCERR (1 << 0)
+#define SPI_FLAG_ERROR SPI_FLAG_CRCERR
 	uint8_t flags;
 	uint8_t data[SPI_PACKET_DATA_LEN];
 	uint8_t crc;
