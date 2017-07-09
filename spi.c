@@ -462,7 +462,7 @@ void spi_dump_packet(const char *indent, struct spi_pl_packet *pkt)
 {
 	uint8_t *c = pkt->data;
 	if (pkt) {
-		printf("%s%p %d %d %d %02x\r\n", indent, pkt, pkt->id, pkt->dst,
+		printf("%s%p %d %d %d %02x\r\n", indent, pkt, pkt->id, pkt->type,
 				pkt->nparts, pkt->flags);
 		printf("%s  ", indent);
 		while (*c && (c < pkt->data + sizeof(pkt->data))) {

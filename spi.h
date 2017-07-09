@@ -22,7 +22,7 @@
 struct spi_pl_packet {
 	struct spi_pl_packet *next;
 	uint8_t id;
-	uint8_t dst;
+	uint8_t type;
 	uint8_t nparts;
 #define SPI_FLAG_CRCERR (1 << 0)
 	uint8_t flags;
