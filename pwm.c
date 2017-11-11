@@ -22,13 +22,10 @@
 
 #include "pwm.h"
 
-void pwm_timer_init(uint32_t timer_peripheral, uint32_t frequency) {
+void pwm_timer_set_freq(uint32_t timer_peripheral, uint32_t frequency)
+{
 	uint32_t pre = 1;
 	uint32_t div, period = 0;
-
-	/* Reset everything */
-	timer_reset(timer_peripheral);
-	timer_slave_set_mode(timer_peripheral, TIM_SMCR_SMS_OFF);
 
 	/* Set prescaler */
 	div = 36000000 / frequency;
@@ -42,6 +39,15 @@ void pwm_timer_init(uint32_t timer_peripheral, uint32_t frequency) {
 	}
 	timer_set_prescaler(timer_peripheral, pre);
 	timer_set_period(timer_peripheral, period);
+}
+
+void pwm_timer_init(uint32_t timer_peripheral, uint32_t frequency) {
+
+	/* Reset everything */
+	timer_reset(timer_peripheral);
+	timer_slave_set_mode(timer_peripheral, TIM_SMCR_SMS_OFF);
+
+	pwm_timer_set_freq(timer_peripheral, frequency);
 
 	/* Set mode */
 	timer_set_mode(timer_peripheral, TIM_CR1_CKD_CK_INT,

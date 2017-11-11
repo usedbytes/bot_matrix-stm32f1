@@ -17,6 +17,7 @@
 #include <stdint.h>
 
 void pwm_timer_init(uint32_t timer_peripheral, uint32_t frequency);
+void pwm_timer_set_freq(uint32_t timer_peripheral, uint32_t frequency);
 void pwm_timer_enable(uint32_t timer_peripheral);
 void pwm_timer_disable(uint32_t timer_peripheral);
 
