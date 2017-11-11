@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "hbridge.h"
 #include "pwm.h"
 #include "usb_cdc.h"
 #include "spi.h"
@@ -15,6 +16,18 @@
 #include "systick.h"
 
 #define TRACE() printf("%s:%d\r\n", __func__, __LINE__)
+
+struct hbridge hb = {
+	.timer = TIM2,
+	.a = {
+		.ch1 = TIM_OC1,
+		.ch2 = TIM_OC2,
+	},
+	.b = {
+		.ch1 = TIM_OC3,
+		.ch2 = TIM_OC4,
+	},
+};
 
 static void setup_gpio(void) {
 	RCC_APB2ENR |= RCC_APB2ENR_IOPCEN;
@@ -47,6 +60,26 @@ static void ep0_process_packet(struct spi_pl_packet *pkt)
 	}
 }
 
+static void ep2_process_packet(struct spi_pl_packet *pkt)
+{
+	if ((pkt->type != 2) || (pkt->flags & SPI_FLAG_ERROR))
+		return;
+
+	uint32_t freq = *((uint32_t*)pkt->data);
+
+	hbridge_set_freq(&hb, freq);
+}
+
+static void ep3_process_packet(struct spi_pl_packet *pkt)
+{
+	if ((pkt->type != 3) || (pkt->flags & SPI_FLAG_ERROR))
+		return;
+
+	uint16_t duty = *((uint16_t*)(pkt->data + 2));
+
+	hbridge_set_duty(&hb, pkt->data[0], pkt->data[1], duty);
+}
+
 int main(void)
 {
 	rcc_clock_setup_in_hse_8mhz_out_72mhz();
@@ -64,20 +97,6 @@ int main(void)
 	spi_init();
 	spi_slave_enable(SPI1);
 
-	pwm_timer_init(TIM2, 200000);
-	pwm_timer_enable(TIM2);
-
-	pwm_channel_set_duty(TIM2, TIM_OC1, 0x8000);
-	pwm_channel_enable(TIM2, TIM_OC1);
-	pwm_channel_set_duty(TIM2, TIM_OC2, 0x4000);
-	pwm_channel_enable(TIM2, TIM_OC2);
-	pwm_channel_set_duty(TIM2, TIM_OC3, 0x2000);
-	pwm_channel_enable(TIM2, TIM_OC3);
-	pwm_channel_set_duty(TIM2, TIM_OC4, 0x1000);
-	pwm_channel_enable(TIM2, TIM_OC4);
-
-	pwm_channel_set_duty(TIM2, TIM_OC1, 10000);
-
 	gpio_set_mode(GPIOC, GPIO_MODE_OUTPUT_2_MHZ,
 		      GPIO_CNF_OUTPUT_PUSHPULL,
 		      GPIO14 | GPIO15);
@@ -88,6 +107,9 @@ int main(void)
 
 	while (!usb_usart_dtr());
 	printf("\r\nStandard I/O Example.\r\n");
+
+	hbridge_init(&hb);
+	hbridge_set_duty(&hb, HBRIDGE_A, false, 0x8000);
 
 	spi_dump_lists();
 
@@ -106,6 +128,14 @@ int main(void)
 					break;
 				case 1:
 					ep1_process_packet(pkt);
+					spi_free_packet(pkt);
+					break;
+				case 2:
+					ep2_process_packet(pkt);
+					spi_free_packet(pkt);
+					break;
+				case 3:
+					ep3_process_packet(pkt);
 					spi_free_packet(pkt);
 					break;
 				default:
