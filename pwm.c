@@ -18,7 +18,6 @@
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/timer.h>
 #include <stdint.h>
-#include <stdio.h>
 
 #include "pwm.h"
 
@@ -101,7 +100,6 @@ void pwm_channel_set_duty(uint32_t timer_peripheral, uint32_t channel,
 			  uint16_t duty) {
 	uint32_t period = TIM_ARR(timer_peripheral);
 	duty = (period * duty) >> 16;
-	printf("Period: %lu duty %u\r\n", period, duty);
 
 	timer_set_oc_value(timer_peripheral, channel, duty);
 }
