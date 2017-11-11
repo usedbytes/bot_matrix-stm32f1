@@ -21,7 +21,7 @@ CFLAGS += $(DEBUG) $(OPT)
 CFLAGS += $(ARCH_FLAGS)
 CFLAGS += -Wall -Wextra -Wshadow -Wimplicit-function-declaration
 CFLAGS += -Wredundant-decls -Wmissing-prototypes -Wstrict-prototypes
-CFLAGS += -fno-common -ffunction-sections -fdata-sections
+CFLAGS += -fno-common -ffunction-sections -fdata-sections -fno-strict-aliasing
 
 ###############################################################################
 
