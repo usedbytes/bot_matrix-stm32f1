@@ -19,12 +19,13 @@
 
 static void channel_init_pwm(uint32_t timer, struct channel *c)
 {
-	pwm_channel_disable(timer, c->ch1);
 	pwm_channel_disable(timer, c->ch2);
-	pwm_channel_set_duty(timer, c->ch1, 0);
 	pwm_channel_set_duty(timer, c->ch2, 0);
 
-	c->dir = DIRECTION_FWD;
+	pwm_channel_disable(timer, c->ch1);
+	pwm_channel_set_duty(timer, c->ch1, 0);
+
+	c->dir = DIRECTION_NONE;
 	c->duty = 0;
 }
 

@@ -28,7 +28,9 @@ enum hbridge_channel {
 
 enum direction {
 	DIRECTION_FWD = 0,
-	DIRECTION_REV = 0,
+	DIRECTION_REV,
+
+	DIRECTION_NONE = -1,
 };
 
 struct channel {
