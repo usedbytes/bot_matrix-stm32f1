@@ -81,6 +81,7 @@ static void ep3_process_packet(struct spi_pl_packet *pkt)
 }
 
 volatile uint32_t tim4_cc1_cnt;
+volatile uint32_t tim4_cc1_sem;
 void tim4_isr(void)
 {
 	static uint16_t cc1_ovf;
@@ -96,8 +97,32 @@ void tim4_isr(void)
 		tim4_cc1_cnt = ((cc1_ovf << 16) + cc1) - cc1_last;
 		cc1_ovf = 0;
 		cc1_last = cc1;
+		tim4_cc1_sem = 1;
 		timer_clear_flag(TIM4, TIM_SR_CC1IF);
 	}
+}
+
+#define Kp (0x1)
+#define Kd (0x0000)
+volatile uint32_t tim3_ticks;
+void tim3_isr(void)
+{
+	static uint16_t duty = 0x2000;
+	static uint32_t setpoint = 4000;
+	static int32_t err2 = 0;
+
+	if (timer_get_flag(TIM3, TIM_SR_UIF)) {
+		tim3_ticks++;
+		timer_clear_flag(TIM3, TIM_SR_UIF);
+	}
+
+	if (!tim4_cc1_sem)
+		return;
+	int64_t err = tim4_cc1_cnt - setpoint;
+
+	duty += ((err * Kp) / 1) + (((err - err2) * Kd) / 256);
+	err2 = err;
+	hbridge_set_duty(&hb, HBRIDGE_A, false, duty);
 }
 
 int main(void)
@@ -107,6 +132,7 @@ int main(void)
 	rcc_periph_clock_enable(RCC_GPIOA);
 	rcc_periph_clock_enable(RCC_GPIOB);
 	rcc_periph_clock_enable(RCC_TIM2);
+	rcc_periph_clock_enable(RCC_TIM3);
 	rcc_periph_clock_enable(RCC_TIM4);
 	rcc_periph_clock_enable(RCC_AFIO);
 	rcc_periph_clock_enable(RCC_SPI1);
@@ -153,15 +179,32 @@ int main(void)
 	nvic_enable_irq(NVIC_TIM4_IRQ);
 	timer_enable_counter(TIM4);
 
+
+	timer_reset(TIM3);
+	timer_slave_set_mode(TIM3, TIM_SMCR_SMS_OFF);
+	timer_set_prescaler(TIM3, 71);
+	timer_set_mode(TIM3, TIM_CR1_CKD_CK_INT,
+		       TIM_CR1_CMS_EDGE, TIM_CR1_DIR_UP);
+	timer_enable_preload(TIM3);
+	timer_update_on_overflow(TIM3);
+	timer_enable_update_event(TIM3);
+	timer_generate_event(TIM3, TIM_EGR_UG);
+
+	timer_enable_irq(TIM3, TIM_DIER_UIE);
+	nvic_enable_irq(NVIC_TIM3_IRQ);
+	timer_set_period(TIM3, 10000);
+	timer_enable_counter(TIM3);
+
 	hbridge_init(&hb);
-	hbridge_set_duty(&hb, HBRIDGE_A, false, 0x1800);
+	hbridge_set_duty(&hb, HBRIDGE_A, false, 0x2000);
 
 	spi_dump_lists();
 
 	struct spi_pl_packet *pkt;
 	uint32_t time = msTicks;
+	uint32_t printTime = msTicks;
+
 	while (1) {
-		delay_ms(10);
 		spi_dump_trace();
 		while ((pkt = spi_receive_packet())) {
 			if (pkt->flags & SPI_FLAG_CRCERR) {
@@ -189,7 +232,7 @@ int main(void)
 			}
 		}
 
-		if (msTicks - time >= 500) {
+		if (msTicks - time >= 100) {
 			time = msTicks;
 
 			printf("Count: %lu\r\n", tim4_cc1_cnt);
