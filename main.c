@@ -13,10 +13,14 @@
 #include "usb_cdc.h"
 #include "spi.h"
 #include "period_counter.h"
+#include "controller.h"
 
 #include "systick.h"
 
 #define TRACE() printf("%s:%d\r\n", __func__, __LINE__)
+
+extern char dbg[256];
+extern volatile bool cp;
 
 struct hbridge hb = {
 	.timer = TIM2,
@@ -28,6 +32,10 @@ struct hbridge hb = {
 		.ch1 = TIM_OC3,
 		.ch2 = TIM_OC4,
 	},
+};
+
+struct controller controller = {
+
 };
 
 static void setup_gpio(void) {
@@ -81,6 +89,47 @@ static void ep3_process_packet(struct spi_pl_packet *pkt)
 	hbridge_set_duty(&hb, pkt->data[0], pkt->data[1], duty);
 }
 
+struct gain_set {
+	int32_t Kc, Kd, Ki;
+};
+
+static void ep4_process_packet(struct spi_pl_packet *pkt)
+{
+	struct gain_set *gs;
+	if ((pkt->type != 4) || (pkt->flags & SPI_FLAG_ERROR))
+		return;
+
+	gs = (struct gain_set *)pkt->data;
+
+	printf("Gains: %lx %lx %lx\r\n", gs->Kc, gs->Kd, gs->Ki);
+
+	controller_set_gains(&controller, gs->Kc, gs->Kd, gs->Ki);
+}
+
+static void ep5_process_packet(struct spi_pl_packet *pkt)
+{
+	if ((pkt->type != 5) || (pkt->flags & SPI_FLAG_ERROR))
+		return;
+
+	uint32_t set_point = *((uint32_t*)(pkt->data));
+
+	printf("Setpoint: %lu\r\n", set_point);
+
+	controller_set(&controller, set_point);
+}
+
+static void ep6_process_packet(struct spi_pl_packet *pkt)
+{
+	if ((pkt->type != 6) || (pkt->flags & SPI_FLAG_ERROR))
+		return;
+
+	int32_t ilimit = *((int32_t*)(pkt->data));
+
+	printf("ilimit: %li\r\n", ilimit);
+
+	controller_set_ilimit(&controller, ilimit);
+}
+
 struct period_counter pc = {
 	.timer = TIM4,
 };
@@ -90,36 +139,33 @@ void tim4_isr(void)
 	period_counter_update(&pc);
 }
 
-/*
-#define Kp (0x1)
-#define Kd (0x0000)
-volatile uint32_t tim3_ticks;
+volatile uint16_t duty = 0x4000;
 void tim3_isr(void)
 {
-	static uint16_t duty = 0x2000;
-	static uint32_t setpoint = 4000;
-	static int32_t err2 = 0;
+	int32_t delta;
 
-	if (timer_get_flag(TIM3, TIM_SR_UIF)) {
-		tim3_ticks++;
-		timer_clear_flag(TIM3, TIM_SR_UIF);
+	timer_clear_flag(TIM3, TIM_SR_UIF);
+	delta = controller_tick(&controller);
+	if (!delta)
+		return;
+
+	if (delta > 0 && ((0x10000 - delta) < duty)) {
+		duty = 0xffff;
+	} else if ((delta < 0) && (-delta > duty)) {
+		duty = 0;
+	} else {
+		duty += delta;
 	}
 
-	if (!tim4_cc1_sem)
-		return;
-	int64_t err = tim4_cc1_cnt - setpoint;
-
-	duty += ((err * Kp) / 1) + (((err - err2) * Kd) / 256);
-	err2 = err;
 	hbridge_set_duty(&hb, HBRIDGE_A, false, duty);
+
 }
-*/
 
 static void pid_timer_init(uint32_t timer)
 {
 	timer_reset(timer);
 	timer_slave_set_mode(timer, TIM_SMCR_SMS_OFF);
-	timer_set_prescaler(timer, 71);
+	timer_set_prescaler(timer, 7100);
 	timer_set_mode(timer, TIM_CR1_CKD_CK_INT,
 		       TIM_CR1_CMS_EDGE, TIM_CR1_DIR_UP);
 	timer_enable_preload(timer);
@@ -129,10 +175,24 @@ static void pid_timer_init(uint32_t timer)
 
 	timer_enable_irq(timer, TIM_DIER_UIE);
 	nvic_enable_irq(NVIC_TIM3_IRQ);
-	timer_set_period(timer, 10000);
-	//timer_enable_counter(timer);
+	timer_set_period(timer, 500);
+	timer_enable_counter(timer);
 }
 
+static struct closure {
+	struct period_counter *cnt;
+	enum pc_channel ch;
+} closure = {
+	&pc,
+	PC_CH1,
+};
+
+static uint32_t get_cnt(void *d)
+{
+	struct closure *c = d;
+
+	return period_counter_get(c->cnt, c->ch);
+}
 
 int main(void)
 {
@@ -168,10 +228,13 @@ int main(void)
 	hbridge_init(&hb);
 	hbridge_set_duty(&hb, HBRIDGE_A, false, 0x2000);
 
+	controller_init(&controller, get_cnt, &closure);
+	controller_set(&controller, 1000);
+	controller_set_gains(&controller, -0x10000, 0, 0);
+
 	period_counter_init(&pc);
 	period_counter_enable(&pc, PC_CH1);
-	//pid_timer_init(TIM3);
-
+	pid_timer_init(TIM3);
 	spi_dump_lists();
 
 	struct spi_pl_packet *pkt;
@@ -199,16 +262,38 @@ int main(void)
 					ep3_process_packet(pkt);
 					spi_free_packet(pkt);
 					break;
+				case 4:
+					ep4_process_packet(pkt);
+					spi_free_packet(pkt);
+					break;
+				case 5:
+					ep5_process_packet(pkt);
+					spi_free_packet(pkt);
+					break;
+				case 6:
+					ep6_process_packet(pkt);
+					spi_free_packet(pkt);
+					break;
 				default:
 					spi_send_packet(pkt);
 			}
 		}
 
+		if (cp) {
+			printf("%s", dbg);
+			cp = false;
+			printf("Duty: %u\r\n", duty);
+			printf("Count: %lu\r\n", period_counter_get(&pc, PC_CH1));
+		}
+
+		/*
 		if (msTicks - time >= 100) {
 			time = msTicks;
 
 			printf("Count: %lu\r\n", period_counter_get(&pc, PC_CH1));
+			printf("Duty: %u\r\n", duty);
 		}
+		*/
 	}
 
 	return 0;
