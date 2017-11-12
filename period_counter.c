@@ -69,7 +69,7 @@ void period_counter_init(struct period_counter *pc)
 		      GPIO_TIM4_CH1 | GPIO_TIM4_CH2);
 	timer_reset(timer);
 	timer_slave_set_mode(timer, TIM_SMCR_SMS_OFF);
-	timer_set_prescaler(timer, 71);
+	timer_set_prescaler(timer, 710);
 	timer_set_mode(timer, TIM_CR1_CKD_CK_INT,
 		       TIM_CR1_CMS_EDGE, TIM_CR1_DIR_UP);
 	timer_enable_preload(timer);
