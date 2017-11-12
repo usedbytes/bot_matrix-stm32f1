@@ -102,6 +102,7 @@ void tim4_isr(void)
 	}
 }
 
+/*
 #define Kp (0x1)
 #define Kd (0x0000)
 volatile uint32_t tim3_ticks;
@@ -124,6 +125,26 @@ void tim3_isr(void)
 	err2 = err;
 	hbridge_set_duty(&hb, HBRIDGE_A, false, duty);
 }
+*/
+
+static void pid_timer_init(uint32_t timer)
+{
+	timer_reset(timer);
+	timer_slave_set_mode(timer, TIM_SMCR_SMS_OFF);
+	timer_set_prescaler(timer, 71);
+	timer_set_mode(timer, TIM_CR1_CKD_CK_INT,
+		       TIM_CR1_CMS_EDGE, TIM_CR1_DIR_UP);
+	timer_enable_preload(timer);
+	timer_update_on_overflow(timer);
+	timer_enable_update_event(timer);
+	timer_generate_event(timer, TIM_EGR_UG);
+
+	timer_enable_irq(timer, TIM_DIER_UIE);
+	nvic_enable_irq(NVIC_TIM3_IRQ);
+	timer_set_period(timer, 10000);
+	//timer_enable_counter(timer);
+}
+
 
 int main(void)
 {
@@ -180,23 +201,10 @@ int main(void)
 	timer_enable_counter(TIM4);
 
 
-	timer_reset(TIM3);
-	timer_slave_set_mode(TIM3, TIM_SMCR_SMS_OFF);
-	timer_set_prescaler(TIM3, 71);
-	timer_set_mode(TIM3, TIM_CR1_CKD_CK_INT,
-		       TIM_CR1_CMS_EDGE, TIM_CR1_DIR_UP);
-	timer_enable_preload(TIM3);
-	timer_update_on_overflow(TIM3);
-	timer_enable_update_event(TIM3);
-	timer_generate_event(TIM3, TIM_EGR_UG);
-
-	timer_enable_irq(TIM3, TIM_DIER_UIE);
-	nvic_enable_irq(NVIC_TIM3_IRQ);
-	timer_set_period(TIM3, 10000);
-	timer_enable_counter(TIM3);
-
 	hbridge_init(&hb);
 	hbridge_set_duty(&hb, HBRIDGE_A, false, 0x2000);
+
+	//pid_timer_init(TIM3);
 
 	spi_dump_lists();
 
