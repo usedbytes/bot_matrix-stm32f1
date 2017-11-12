@@ -210,8 +210,6 @@ int main(void)
 
 	struct spi_pl_packet *pkt;
 	uint32_t time = msTicks;
-	uint32_t printTime = msTicks;
-
 	while (1) {
 		spi_dump_trace();
 		while ((pkt = spi_receive_packet())) {
