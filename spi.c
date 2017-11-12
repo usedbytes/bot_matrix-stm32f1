@@ -28,7 +28,7 @@
 #define SPI1_RX_DMA 2
 #define SPI1_TX_DMA 3
 
-#define SPI_N_PACKETS 3
+#define SPI_N_PACKETS 256
 
 #ifdef DEBUG
 volatile char spi_trace[100];

@@ -18,7 +18,7 @@
 #ifndef __SPI_H__
 #define __SPI_H__
 
-#define SPI_PACKET_DATA_LEN 4
+#define SPI_PACKET_DATA_LEN 32
 struct spi_pl_packet {
 	struct spi_pl_packet *next;
 	uint8_t id;
