@@ -31,7 +31,7 @@ static void channel_init_pwm(uint32_t timer, struct channel *c)
 
 void hbridge_init(struct hbridge *hb)
 {
-	pwm_timer_init(hb->timer, 2000);
+	pwm_timer_init(hb->timer, 15000);
 	pwm_timer_enable(hb->timer);
 
 	channel_init_pwm(hb->timer, &hb->a);
