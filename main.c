@@ -5,6 +5,7 @@
 #include <libopencm3/stm32/timer.h>
 #include <libopencm3/stm32/spi.h>
 #include <libopencm3/cm3/nvic.h>
+#include <libopencm3/cm3/scb.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -18,6 +19,38 @@
 #include "systick.h"
 
 #define TRACE() printf("%s:%d\r\n", __func__, __LINE__)
+
+static void setup_irq_priorities(void)
+{
+	struct map_entry {
+		uint32_t irqn;
+		uint8_t  prio;
+	} map[] = {
+		{ NVIC_SPI1_IRQ,            (0 << 6) | (0 << 4) },
+		{ NVIC_EXTI4_IRQ,           (0 << 6) | (0 << 4) },
+		{ NVIC_DMA1_CHANNEL3_IRQ,   (0 << 6) | (2 << 4) },
+		{ NVIC_DMA1_CHANNEL2_IRQ,   (0 << 6) | (1 << 4) },
+		{ NVIC_TIM4_IRQ,            (1 << 6) | (0 << 4) },
+		{ NVIC_USB_LP_CAN_RX0_IRQ,  (2 << 6) | (0 << 4) },
+		{ NVIC_USB_WAKEUP_IRQ,      (2 << 6) | (1 << 4) },
+		{ NVIC_TIM3_IRQ,            (3 << 6) | (0 << 4) },
+		{ 0, 0 }
+	}, *p = map;
+
+	/*
+	 * Priority ordering to try and make SPI reliable...
+	 * stm32f103 only implements 4 bits of priority!
+	 * Interrupt priority grouping (2 bits of pre-empt):
+	 *   7:6 - pre-emption
+	 *   5:4 - priority
+	 *   3:0 - unused
+	 */
+	scb_set_priority_grouping(5 << 8);
+	while (p->irqn) {
+		nvic_set_priority(p->irqn, p->prio);
+		p++;
+	};
+}
 
 extern char dbg[256];
 extern volatile bool cp;
@@ -236,6 +269,8 @@ int main(void)
 	period_counter_enable(&pc, PC_CH1);
 	pid_timer_init(TIM3);
 	spi_dump_lists();
+
+	setup_irq_priorities();
 
 	struct spi_pl_packet *pkt;
 	uint32_t time = msTicks;
