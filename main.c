@@ -12,6 +12,7 @@
 #include "pwm.h"
 #include "usb_cdc.h"
 #include "spi.h"
+#include "period_counter.h"
 
 #include "systick.h"
 
@@ -80,26 +81,13 @@ static void ep3_process_packet(struct spi_pl_packet *pkt)
 	hbridge_set_duty(&hb, pkt->data[0], pkt->data[1], duty);
 }
 
-volatile uint32_t tim4_cc1_cnt;
-volatile uint32_t tim4_cc1_sem;
+struct period_counter pc = {
+	.timer = TIM4,
+};
+
 void tim4_isr(void)
 {
-	static uint16_t cc1_ovf;
-	static uint16_t cc1_last;
-
-	if (timer_get_flag(TIM4, TIM_SR_UIF)) {
-		cc1_ovf++;
-		timer_clear_flag(TIM4, TIM_SR_UIF);
-	}
-
-	if (timer_get_flag(TIM4, TIM_SR_CC1IF)) {
-		uint16_t cc1 = TIM_CCR1(TIM4);
-		tim4_cc1_cnt = ((cc1_ovf << 16) + cc1) - cc1_last;
-		cc1_ovf = 0;
-		cc1_last = cc1;
-		tim4_cc1_sem = 1;
-		timer_clear_flag(TIM4, TIM_SR_CC1IF);
-	}
+	period_counter_update(&pc);
 }
 
 /*
@@ -177,33 +165,11 @@ int main(void)
 	while (!usb_usart_dtr());
 	printf("\r\nStandard I/O Example.\r\n");
 
-	gpio_set_mode(GPIOB, GPIO_MODE_INPUT,
-		      GPIO_CNF_INPUT_FLOAT,
-		      GPIO_TIM4_CH1 | GPIO_TIM4_CH2);
-	timer_reset(TIM4);
-	timer_slave_set_mode(TIM4, TIM_SMCR_SMS_OFF);
-	timer_set_prescaler(TIM4, 71);
-	timer_set_mode(TIM4, TIM_CR1_CKD_CK_INT,
-		       TIM_CR1_CMS_EDGE, TIM_CR1_DIR_UP);
-	timer_enable_preload(TIM4);
-	timer_update_on_overflow(TIM4);
-	timer_enable_update_event(TIM4);
-	timer_generate_event(TIM4, TIM_EGR_UG);
-
-	timer_ic_set_input(TIM4, TIM_IC1, TIM_IC_IN_TI1);
-	timer_ic_set_input(TIM4, TIM_IC2, TIM_IC_IN_TI2);
-
-	timer_ic_enable(TIM4, TIM_IC1);
-
-	timer_enable_irq(TIM4, TIM_DIER_UIE | TIM_DIER_CC1IE);
-
-	nvic_enable_irq(NVIC_TIM4_IRQ);
-	timer_enable_counter(TIM4);
-
-
 	hbridge_init(&hb);
 	hbridge_set_duty(&hb, HBRIDGE_A, false, 0x2000);
 
+	period_counter_init(&pc);
+	period_counter_enable(&pc, PC_CH1);
 	//pid_timer_init(TIM3);
 
 	spi_dump_lists();
@@ -241,7 +207,7 @@ int main(void)
 		if (msTicks - time >= 100) {
 			time = msTicks;
 
-			printf("Count: %lu\r\n", tim4_cc1_cnt);
+			printf("Count: %lu\r\n", period_counter_get(&pc, PC_CH1));
 		}
 	}
 
