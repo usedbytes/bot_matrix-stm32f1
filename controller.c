@@ -22,14 +22,21 @@
 char dbg[256];
 volatile bool cp;
 
-void controller_init(struct controller *c) {
+void controller_init(struct controller *c, const struct gain *gs, uint8_t ngains) {
 	c->skip = 1;
+	c->gains = gs;
+	c->ngains = ngains;
 }
 
 void controller_set_gains(struct controller *c, int32_t Kc, int32_t Kd, int32_t Ki) {
-	c->Kc = Kc;
-	c->Kd = Kd;
-	c->Ki = Ki;
+	if (Kc || Kd || Ki) {
+		c->gain.Kc = Kc;
+		c->gain.Kd = Kd;
+		c->gain.Ki = Ki;
+		c->gain_override = true;
+	} else {
+		c->gain_override = false;
+	}
 }
 
 void controller_set(struct controller *c, uint32_t set_point) {
@@ -44,14 +51,17 @@ void controller_set_ilimit(struct controller *c, int32_t ilimit) {
 	c->ilimit = ilimit;
 }
 
-int32_t controller_tick(struct controller *c, uint32_t pv) {
+int32_t controller_tick(struct controller *c, uint32_t pv, uint8_t gs_idx) {
+	const struct gain *gains;
 	int32_t tc, td, ti, ret;
 	int32_t err, derr;
 
-	if (pv == 0) {
+	if (pv == 0 || gs_idx >= c->ngains) {
 		c->skip++;
 		return 0;
 	}
+
+	gains = c->gain_override ? &c->gain : &c->gains[gs_idx];
 
 	err = c->set_point - pv;
 	c->ierr += ((err * 25) / (256 * c->skip));
@@ -64,13 +74,14 @@ int32_t controller_tick(struct controller *c, uint32_t pv) {
 	c->err = err;
 	c->skip = 1;
 
-	tc = ((int64_t)(err) * c->Kc) / 65536;
-	td = ((int64_t)(derr) * c->Kd) / 65536;
-	ti = ((int64_t)(c->ierr) * c->Ki) / 65536;
+	tc = ((int64_t)(err) * gains->Kc) / 65536;
+	td = ((int64_t)(derr) * gains->Kd) / 65536;
+	ti = ((int64_t)(c->ierr) * gains->Ki) / 65536;
 	ret = tc + td + ti;
 
-	sprintf(dbg, "err: %li, derr: %li, ierr: %li\r\n"
-		"tc: %li, td: %li, ti: %li ret: %li\r\n", err, derr, c->ierr, tc, td, ti, ret);
+	sprintf(dbg, "idx: %d, Kc: %ld, Kd: %ld, Ki: %ld\r\n"
+		"err: %li, derr: %li, ierr: %li\r\n"
+		"tc: %li, td: %li, ti: %li ret: %li\r\n", gs_idx, gains->Kc, gains->Kd, gains->Ki, err, derr, c->ierr, tc, td, ti, ret);
 	cp = true;
 
 	return ret;

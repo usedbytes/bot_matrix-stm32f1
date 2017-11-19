@@ -19,10 +19,19 @@
 
 #include <stdint.h>
 
-struct controller {
+#define FP_VAL(_x) ((uint32_t)(_x * 65536))
+
+struct gain {
 	int32_t Kc;
 	int32_t Kd;
 	int32_t Ki;
+};
+
+struct controller {
+	struct gain gain;
+	bool gain_override;
+	const struct gain *gains;
+	unsigned int ngains;
 	int32_t ilimit;
 
 	uint32_t set_point;
@@ -34,11 +43,11 @@ struct controller {
 	void *closure;
 };
 
-void controller_init(struct controller *c);
+void controller_init(struct controller *c, const struct gain *gains, uint8_t ngains);
 void controller_set_gains(struct controller *c, int32_t Kc, int32_t Kd, int32_t Ki);
 void controller_set_ilimit(struct controller *c, int32_t ilimit);
 void controller_set(struct controller *c, uint32_t set_point);
 uint32_t controller_get(struct controller *c);
-int32_t controller_tick(struct controller *c, uint32_t pv);
+int32_t controller_tick(struct controller *c, uint32_t pv, uint8_t gs_idx);
 
 #endif /* __CONTROLLER_H__ */

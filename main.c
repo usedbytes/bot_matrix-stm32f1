@@ -20,6 +20,26 @@
 
 #define TRACE() printf("%s:%d\r\n", __func__, __LINE__)
 
+const struct gain gains[] = {
+	{ FP_VAL(-1), 0, 0 },
+	{ FP_VAL(-5), 0, 0 },
+	{ FP_VAL(-10), 0, 0 },
+	{ FP_VAL(-25), 0, 0 },
+	{ FP_VAL(-100), 0, 0 },
+	{ FP_VAL(-130), 0, 0 },
+	{ FP_VAL(-200), 0, 0 },
+};
+
+const uint16_t gs_limits[] = {
+	4000,
+	3500,
+	6000,
+	10000,
+	18000,
+	35000,
+	65535,
+};
+
 volatile uint16_t duty = 0x4000;
 
 static void setup_irq_priorities(void)
@@ -183,10 +203,16 @@ volatile uint16_t duty = 0x4000;
 void tim3_isr(void)
 {
 	int32_t delta = 0;
+	uint8_t gs_idx;
 	uint32_t count = period_counter_get(&pc, PC_CH1);
 
+	for (gs_idx = 0; gs_idx < sizeof(gains) / sizeof(gains[0]); gs_idx++) {
+		if (duty < gs_limits[gs_idx])
+			break;
+	}
+
 	timer_clear_flag(TIM3, TIM_SR_UIF);
-	delta = controller_tick(&controller, count);
+	delta = controller_tick(&controller, count, gs_idx);
 	if (!delta)
 		return;
 
@@ -254,9 +280,9 @@ int main(void)
 	hbridge_init(&hb);
 	hbridge_set_duty(&hb, HBRIDGE_A, false, 0x2000);
 
-	controller_init(&controller);
+	controller_init(&controller, gains, sizeof(gains) / sizeof(gains[0]));
 	controller_set(&controller, 1000);
-	controller_set_gains(&controller, -0x10000, 0, 0);
+	//controller_set_gains(&controller, -0x10000, 0, 0);
 
 	period_counter_init(&pc);
 	period_counter_enable(&pc, PC_CH1);
