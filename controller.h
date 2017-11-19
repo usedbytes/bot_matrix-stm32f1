@@ -34,10 +34,11 @@ struct controller {
 	void *closure;
 };
 
-void controller_init(struct controller *c, uint32_t (*process)(void *), void *d);
+void controller_init(struct controller *c);
 void controller_set_gains(struct controller *c, int32_t Kc, int32_t Kd, int32_t Ki);
 void controller_set_ilimit(struct controller *c, int32_t ilimit);
 void controller_set(struct controller *c, uint32_t set_point);
-int32_t controller_tick(struct controller *c);
+uint32_t controller_get(struct controller *c);
+int32_t controller_tick(struct controller *c, uint32_t pv);
 
 #endif /* __CONTROLLER_H__ */

@@ -182,10 +182,11 @@ void tim4_isr(void)
 volatile uint16_t duty = 0x4000;
 void tim3_isr(void)
 {
-	int32_t delta;
+	int32_t delta = 0;
+	uint32_t count = period_counter_get(&pc, PC_CH1);
 
 	timer_clear_flag(TIM3, TIM_SR_UIF);
-	delta = controller_tick(&controller);
+	delta = controller_tick(&controller, count);
 	if (!delta)
 		return;
 
@@ -217,21 +218,6 @@ static void pid_timer_init(uint32_t timer)
 	nvic_enable_irq(NVIC_TIM3_IRQ);
 	timer_set_period(timer, 500);
 	timer_enable_counter(timer);
-}
-
-static struct closure {
-	struct period_counter *cnt;
-	enum pc_channel ch;
-} closure = {
-	&pc,
-	PC_CH1,
-};
-
-static uint32_t get_cnt(void *d)
-{
-	struct closure *c = d;
-
-	return period_counter_get(c->cnt, c->ch);
 }
 
 int main(void)
@@ -268,7 +254,7 @@ int main(void)
 	hbridge_init(&hb);
 	hbridge_set_duty(&hb, HBRIDGE_A, false, 0x2000);
 
-	controller_init(&controller, get_cnt, &closure);
+	controller_init(&controller);
 	controller_set(&controller, 1000);
 	controller_set_gains(&controller, -0x10000, 0, 0);
 

@@ -22,9 +22,7 @@
 char dbg[256];
 volatile bool cp;
 
-void controller_init(struct controller *c, uint32_t (*process)(void *), void *d) {
-	c->process = process;
-	c->closure = d;
+void controller_init(struct controller *c) {
 	c->skip = 1;
 }
 
@@ -38,14 +36,18 @@ void controller_set(struct controller *c, uint32_t set_point) {
 	c->set_point = set_point;
 }
 
+uint32_t controller_get(struct controller *c) {
+	return c->set_point;
+}
+
 void controller_set_ilimit(struct controller *c, int32_t ilimit) {
 	c->ilimit = ilimit;
 }
 
-int32_t controller_tick(struct controller *c) {
+int32_t controller_tick(struct controller *c, uint32_t pv) {
 	int32_t tc, td, ti, ret;
 	int32_t err, derr;
-	uint32_t pv = c->process(c->closure);
+
 	if (pv == 0) {
 		c->skip++;
 		return 0;
