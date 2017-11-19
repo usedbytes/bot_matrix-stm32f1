@@ -20,6 +20,8 @@
 
 #define TRACE() printf("%s:%d\r\n", __func__, __LINE__)
 
+volatile uint16_t duty = 0x4000;
+
 static void setup_irq_priorities(void)
 {
 	struct map_entry {
@@ -92,6 +94,8 @@ static void ep0_process_packet(struct spi_pl_packet *pkt)
 {
 	static char str[256] = { 0 };
 
+	return;
+
 	if ((pkt->type != 0) || (pkt->flags & SPI_FLAG_ERROR))
 		return;
 
@@ -117,9 +121,12 @@ static void ep3_process_packet(struct spi_pl_packet *pkt)
 	if ((pkt->type != 3) || (pkt->flags & SPI_FLAG_ERROR))
 		return;
 
-	uint16_t duty = *((uint16_t*)(pkt->data + 2));
+	uint16_t lduty = *((uint16_t*)(pkt->data + 2));
 
-	hbridge_set_duty(&hb, pkt->data[0], pkt->data[1], duty);
+	printf("Set duty: %x\r\n", lduty);
+	duty = lduty;
+
+	hbridge_set_duty(&hb, pkt->data[0], pkt->data[1], lduty);
 }
 
 struct gain_set {
