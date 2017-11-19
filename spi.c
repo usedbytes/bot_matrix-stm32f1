@@ -146,8 +146,8 @@ void exti4_isr(void)
 		__spi_trace('A');
 		__spi_trace_hex(SPI_SR(SPI1));
 
-		spi_enable_tx_dma(SPI1);
 		spi_enable_rx_dma(SPI1);
+		spi_enable_tx_dma(SPI1);
 
 		__spi_trace('B');
 		__spi_trace_hex(SPI_SR(SPI1));
@@ -217,15 +217,15 @@ void spi1_isr(void)
 	SPI_RXCRCR(SPI1) = 0;
 	SPI_TXCRCR(SPI1) = 0;
 	spi_enable_crc(SPI1);
-	SPI_SR(SPI1) = 0;
+	spi_enable_rx_dma(SPI1);
 	/* --- */
 
 	__spi_trace('I');
 
 	/* Less critical */
-	spi_enable_rx_dma(SPI1);
 
 	/* Relaxed */
+	SPI_SR(SPI1) = 0;
 	spi_disable_rx_buffer_not_empty_interrupt(SPI1);
 
 	pkt = (void *)((volatile void*)packet_free.done);
