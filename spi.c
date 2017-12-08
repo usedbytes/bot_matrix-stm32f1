@@ -23,13 +23,16 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "queue.h"
+#include "util.h"
 #include "spi.h"
 
 #define SPI1_RX_DMA 2
 #define SPI1_TX_DMA 3
 
-#define SPI_N_PACKETS 256
+#define SPI_N_PACKETS 8
 
+#define DEBUG
 #ifdef DEBUG
 volatile char spi_trace[100];
 volatile unsigned int spi_trace_idx;
@@ -66,199 +69,38 @@ static inline void __spi_trace_hex(char c) { (void)(c); }
 #endif
 
 struct spi_pl_packet_head {
-	/* .next should be the first member so we can cast this to a packet */
-	struct spi_pl_packet *next;
-	struct spi_pl_packet *last;
+	struct queue queue;
 	struct spi_pl_packet *current;
-	struct spi_pl_packet *done;
-	/*
-	 * Used as a dummy source/destination for DMA when there's no
-	 * packets to process
-	 */
-	uint8_t zero;
+	struct spi_pl_packet zero;
 };
 
 volatile bool spi_busy;
-volatile uint8_t spi_lock = 0;
-#define SPI_TX_LOCK BBIO_SRAM(&spi_lock, 0)
-#define SPI_RX_LOCK BBIO_SRAM(&spi_lock, 1)
 struct spi_pl_packet packet_pool[SPI_N_PACKETS];
 struct spi_pl_packet_head packet_free = {
-	.last = (struct spi_pl_packet *)&packet_free,
+	.queue = { .last = (struct queue_node *)&packet_free },
 };
 struct spi_pl_packet_head packet_inbox = {
-	.last = (struct spi_pl_packet *)&packet_inbox,
+	.queue = { .last = (struct queue_node *)&packet_inbox },
 };
 struct spi_pl_packet_head packet_outbox = {
-	.last = (struct spi_pl_packet *)&packet_outbox,
+	.queue = { .last = (struct queue_node *)&packet_outbox },
 };
 
 #define SPI_PACKET_DMA_SIZE (offsetof(struct spi_pl_packet, crc) - offsetof(struct spi_pl_packet, id))
-static inline uint32_t spi_pl_packet_dma_addr(struct spi_pl_packet *pkt);
-static void spi_add_last(struct spi_pl_packet_head *list, struct spi_pl_packet *pkt);
-static struct spi_pl_packet *
-spi_queue_next_packet(struct spi_pl_packet_head *list, uint32_t dma_channel);
-static void spi_finish_transaction(void);
 
-/*
- * SPI Transaction sequence.
- *
- * NSS ````\_________________________________________________________________
- *         :
- *         :    +--------+--------+--------+--------+--------+--------+
- * MISO    :    |   0    |   1    |   2    |   3    |  CRC   |   0     ----->
- *         :    +--------+--------+--------+--------+--------+--------+
- * MOSI    :    |   a    |   b    |   c    |   d    |  CRC   |   a     ----->
- *         :    +--------+--------+--------+--------+--------+--------+
- *         :      :     :           :              :        :
- *         :      :     v           :              :        `-----> RXF interrupt.
- *         :      :  RXF, RX DMA    :              :                Timing here is critical.
- *         :      :  reads 'a'      :              :                Before the start of next byte:
- *         :      v                 :              v                 - Drain SPI_DR (this is the CRC)
- *         :  TXE, TX DMA loads     :    RXF, RX DMA reads 'd'       - Enable TX DMA
- *         :  '1' to SPI_DR         :    raises TCI.                 - Read SPI_SR (for CRCERR)
- *         v                        :    Disable DMA, set up         - Disable SPI CRC
- *  NSS goes low, enable            :    next packet, and enable     - Clear SPI_RXCRC/SPI_TXCRC
- *  DMAs, TX DMA loads '0'          :    RXF IRQ, to fire at end     - Re-enable SPI CRC
- *  to SPI_DR                       :    of CRC                     Then, also enable RX DMA, disable
- *                                  v                               the RXF IRQ and process whatever
- *                              TXE, TX DMA loads '3'               packets we just sent/received.
- *                              to SPI_DR and raises TCI
- *                              Disable DMA and set it up
- *                              with the next packet
- *
- * There are three packets lists:
- *  - packet_free: Holds "free" packets, ready to be received into
- *  - packet_outbox: Holds packets which are queued for transmission
- *  - packet_inbox: Holds packets which have been received, ready for processing
- *
- * All manipulations of the packet lists need to hold locks to avoid racing with
- * the IRQ handlers.
- */
-
-void exti4_isr(void)
+static inline uint32_t spi_pl_packet_dma_addr(struct spi_pl_packet *pkt)
 {
-	spi_busy = !gpio_get(GPIOA, GPIO4);
-
-	EXTI_PR |= 1 << 4;
-
-	if (spi_busy) {
-		__spi_trace('A');
-		__spi_trace_hex(SPI_SR(SPI1));
-
-		spi_enable_rx_dma(SPI1);
-		spi_enable_tx_dma(SPI1);
-
-		__spi_trace('B');
-		__spi_trace_hex(SPI_SR(SPI1));
-	} else {
-		__spi_trace('Z');
-		__spi_trace_hex(SPI_SR(SPI1));
-
-		SPI_RX_LOCK = 1;
-
-		/* Disable and reset DMAs - keep the same addresses! */
-		spi_finish_transaction();
-
-		if (!packet_outbox.current) {
-			packet_outbox.current = spi_queue_next_packet(&packet_outbox, SPI1_TX_DMA);
-		}
-
-		SPI_RX_LOCK = 0;
-	}
+	return (uint32_t)&(pkt->id);
 }
 
-/* SPI1_RX_DMA */
-void dma1_channel2_isr(void)
+static struct spi_pl_packet *spi_dequeue_packet(struct spi_pl_packet_head *list)
 {
-	__spi_trace('R');
-
-	dma_clear_interrupt_flags(DMA1, SPI1_RX_DMA, DMA_TEIF | DMA_HTIF | DMA_TCIF | DMA_GIF);
-
-	spi_disable_rx_dma(SPI1);
-
-	/* RXF will fire at the end of the CRC byte */
-	spi_enable_rx_buffer_not_empty_interrupt(SPI1);
-
-	/* Set up the next packet ready to go */
-	packet_free.done = (void *)((volatile void*)packet_free.current);
-	__spi_trace(packet_free.done ? '1' : '0');
-	packet_free.current = spi_queue_next_packet(&packet_free, SPI1_RX_DMA);
-	// TODO: Check for overrun here.
-
-	/* Lock everything to protect our critical section in the SPI ISR */
-	spi_lock = ~0;
+	return (struct spi_pl_packet *)queue_dequeue(&(list->queue));
 }
 
-/* SPI1_TX_DMA */
-void dma1_channel3_isr(void)
+static void spi_add_last(struct spi_pl_packet_head *list, struct spi_pl_packet *pkt)
 {
-	__spi_trace('T');
-
-	dma_clear_interrupt_flags(DMA1, SPI1_TX_DMA, DMA_TEIF | DMA_HTIF | DMA_TCIF | DMA_GIF);
-
-	spi_disable_tx_dma(SPI1);
-
-	/* Set up the next packet ready to go */
-	packet_outbox.done = (void *)((volatile void*)packet_outbox.current);
-	__spi_trace(packet_outbox.done ? '1' : '0');
-	packet_outbox.current = spi_queue_next_packet(&packet_outbox, SPI1_TX_DMA);
-}
-
-void spi1_isr(void)
-{
-	struct spi_pl_packet *pkt;
-	uint8_t crc = SPI_DR(SPI1);
-	uint8_t status = SPI_SR(SPI1);
-
-	/* Critical section */
-	spi_enable_tx_dma(SPI1);
-	spi_disable_crc(SPI1);
-	SPI_RXCRCR(SPI1) = 0;
-	SPI_TXCRCR(SPI1) = 0;
-	spi_enable_crc(SPI1);
-	spi_enable_rx_dma(SPI1);
-	/* --- */
-
-	__spi_trace('I');
-
-	/* Less critical */
-
-	/* Relaxed */
-	SPI_SR(SPI1) = 0;
-	spi_disable_rx_buffer_not_empty_interrupt(SPI1);
-
-	pkt = (void *)((volatile void*)packet_free.done);
-	if (pkt) {
-		__spi_trace('r');
-		packet_free.done = NULL;
-
-		pkt->crc = crc;
-		if (status & SPI_SR_CRCERR) {
-			pkt->flags |= SPI_FLAG_CRCERR;
-		}
-		spi_add_last(&packet_inbox, pkt);
-	}
-
-	pkt = (void *)((volatile void*)packet_outbox.done);
-	if (pkt) {
-		__spi_trace('t');
-		packet_outbox.done = NULL;
-
-		/*
-		 * TODO: Is this too slow for here?
-		 * Could defer to a pending "to free" list
-		 */
-		memset(pkt, 0, sizeof(*pkt));
-		spi_add_last(&packet_free, pkt);
-		if (!packet_free.current) {
-			/* We just freed up a packet we can queue for RX. */
-			packet_free.current = spi_queue_next_packet(&packet_free, SPI1_RX_DMA);
-		}
-	}
-
-	/* Unlock all */
-	spi_lock = 0;
+	queue_enqueue(&(list->queue), (struct queue_node *)pkt);
 }
 
 static void spi_slave_init(uint32_t spidev)
@@ -278,6 +120,149 @@ static void spi_slave_init(uint32_t spidev)
 	spi_set_slave_mode(spidev);
 }
 
+static void prepare_tx(void)
+{
+	static uint8_t id = 0;
+
+	/*
+	 * Preload the data register, so we transmit the ID while setting
+	 * up the DMA
+	 */
+	SPI_DR(SPI1) = id++;
+}
+
+static void start_tx(void)
+{
+	/* If we aren't re-transmitting, we need to set up the new transfer */
+	struct spi_pl_packet *pkt = packet_outbox.current;
+	if (!pkt) {
+		pkt = spi_dequeue_packet(&packet_outbox);
+		if (!pkt) {
+			pkt = &packet_outbox.zero;
+		}
+		packet_outbox.current = pkt;
+	}
+
+	/* Plus one because DMA skips the ID */
+	dma_set_memory_address(DMA1, SPI1_TX_DMA, spi_pl_packet_dma_addr(pkt) + 1);
+
+	dma_enable_channel(DMA1, SPI1_TX_DMA);
+	spi_enable_tx_dma(SPI1);
+}
+
+static void finish_tx(void)
+{
+	/* Disable the channel so we can modify it */
+	dma_disable_channel(DMA1, SPI1_TX_DMA);
+	/* Reset the counter, minus one because we don't DMA the ID */
+	dma_set_number_of_data(DMA1, SPI1_TX_DMA, SPI_PACKET_DMA_SIZE - 1);
+
+	/* If the previous transfer completed, free it */
+	if (dma_get_interrupt_flag(DMA1, SPI1_TX_DMA, DMA_TCIF)) {
+		struct spi_pl_packet *pkt = packet_outbox.current;
+		if (pkt != &packet_outbox.zero) {
+			spi_free_packet(pkt);
+		}
+		packet_outbox.current = NULL;
+	}
+
+	dma_clear_interrupt_flags(DMA1, SPI1_TX_DMA, DMA_TEIF | DMA_HTIF | DMA_TCIF | DMA_GIF);
+}
+
+static void prepare_rx(void)
+{
+	/*
+	 * We can set up the new packet for receive up-front.
+	 * The only downside is we might not have anything in the free-list,
+	 * whereas something might have been processed and freed by the time
+	 * the next transfer starts.
+	 * It's not worth worrying about, this moves lots of work off the
+	 * critical path.
+	 */
+	struct spi_pl_packet *pkt = spi_alloc_packet();
+	if (!pkt) {
+		pkt = &packet_free.zero;
+	}
+	packet_free.current = pkt;
+
+	dma_set_memory_address(DMA1, SPI1_RX_DMA, spi_pl_packet_dma_addr(pkt));
+}
+
+static void start_rx(void)
+{
+	dma_enable_channel(DMA1, SPI1_RX_DMA);
+	spi_enable_rx_dma(SPI1);
+}
+
+static void receive_packet(struct spi_pl_packet *pkt)
+{
+	uint8_t status = SPI_SR(SPI1);
+	SPI_SR(SPI1) = 0;
+	if (status & SPI_SR_CRCERR) {
+		pkt->flags |= SPI_FLAG_CRCERR;
+	}
+	spi_add_last(&packet_inbox, pkt);
+}
+
+static void finish_rx(void)
+{
+	/* Disable the channel so we can modify it */
+	dma_disable_channel(DMA1, SPI1_RX_DMA);
+	/* Reset the counter, minus one because we don't DMA the ID */
+	dma_set_number_of_data(DMA1, SPI1_RX_DMA, SPI_PACKET_DMA_SIZE);
+
+	/* If the previous transfer completed, receive it */
+	if (dma_get_interrupt_flag(DMA1, SPI1_RX_DMA, DMA_TCIF)) {
+		struct spi_pl_packet *pkt = packet_free.current;
+		if (pkt != &packet_free.zero) {
+			receive_packet(pkt);
+		}
+		packet_free.current = NULL;
+	}
+
+	dma_clear_interrupt_flags(DMA1, SPI1_RX_DMA, DMA_TEIF | DMA_HTIF | DMA_TCIF | DMA_GIF);
+}
+
+static void start_transaction(void)
+{
+	/* Do RX first, because we've got a whole byte of time to sort out TX */
+	start_rx();
+	start_tx();
+}
+
+static void finish_transaction(void)
+{
+	/*
+	 * Discard the final byte. Seems like peripheral reset doesn't clear
+	 * it?
+	 */
+	SPI_DR(SPI1);
+
+	finish_rx();
+	finish_tx();
+
+	/* Reset the peripheral to discard the TX DR */
+	spi_slave_init(SPI1);
+	spi_enable_crc(SPI1);
+	spi_slave_enable(SPI1);
+
+	prepare_rx();
+	prepare_tx();
+}
+
+void exti4_isr(void)
+{
+	spi_busy = !gpio_get(GPIOA, GPIO4);
+
+	if (spi_busy) {
+		start_transaction();
+	} else {
+		finish_transaction();
+	}
+
+	EXTI_PR |= 1 << 4;
+}
+
 void spi_slave_enable(uint32_t spidev)
 {
 	spi_enable(spidev);
@@ -290,134 +275,26 @@ void spi_slave_disable(uint32_t spidev)
 	spi_disable(spidev);
 }
 
-static inline uint32_t spi_pl_packet_dma_addr(struct spi_pl_packet *pkt)
-{
-	return (uint32_t)&(pkt->id);
-}
-
-static void spi_add_last(struct spi_pl_packet_head *list, struct spi_pl_packet *pkt)
-{
-	__spi_trace('l');
-	list->last->next = pkt;
-	list->last = pkt;
-}
-
-static struct spi_pl_packet *spi_dequeue_packet(struct spi_pl_packet_head *list)
-{
-	struct spi_pl_packet *pkt = list->next;
-	if (!pkt) {
-		return NULL;
-	}
-
-	list->next = pkt->next;
-	if (!list->next)
-		list->last = (struct spi_pl_packet *)list;
-	pkt->next = NULL;
-
-	return pkt;
-}
-
-static struct spi_pl_packet *
-spi_queue_next_packet(struct spi_pl_packet_head *list, uint32_t dma_channel)
-{
-	struct spi_pl_packet *pkt = spi_dequeue_packet(list);
-	dma_disable_channel(DMA1, dma_channel);
-
-	if (pkt) {
-		__spi_trace('Q');
-		dma_set_memory_address(DMA1, dma_channel, spi_pl_packet_dma_addr(pkt));
-		dma_enable_memory_increment_mode(DMA1, dma_channel);
-	} else {
-		__spi_trace('E');
-		dma_set_memory_address(DMA1, dma_channel, (uint32_t)&list->zero);
-		dma_disable_memory_increment_mode(DMA1, dma_channel);
-	}
-
-	dma_set_number_of_data(DMA1, dma_channel, SPI_PACKET_DMA_SIZE);
-	dma_enable_channel(DMA1, dma_channel);
-
-	return pkt;
-}
-
-static inline void __spi_lock(void)
-{
-	nvic_disable_irq(NVIC_DMA1_CHANNEL3_IRQ);
-	nvic_disable_irq(NVIC_DMA1_CHANNEL2_IRQ);
-	nvic_disable_irq(NVIC_EXTI4_IRQ);
-
-	while (SPI_RX_LOCK);
-}
-
-static inline void __spi_unlock(void)
-{
-	nvic_enable_irq(NVIC_EXTI4_IRQ);
-	nvic_enable_irq(NVIC_DMA1_CHANNEL2_IRQ);
-	nvic_enable_irq(NVIC_DMA1_CHANNEL3_IRQ);
-}
-
 void spi_free_packet(struct spi_pl_packet *pkt)
 {
 	memset(pkt, 0, sizeof(*pkt));
 
-	__spi_lock();
-
 	spi_add_last(&packet_free, pkt);
-
-	__spi_unlock();
 }
 
 struct spi_pl_packet *spi_alloc_packet(void)
 {
-	struct spi_pl_packet *pkt;
-
-	__spi_lock();
-
-	pkt = spi_dequeue_packet(&packet_free);
-
-	__spi_unlock();
-
-	return pkt;
+	return spi_dequeue_packet(&packet_free);
 }
 
 struct spi_pl_packet *spi_receive_packet(void)
 {
-	struct spi_pl_packet *pkt;
-
-	__spi_lock();
-
-	pkt = spi_dequeue_packet(&packet_inbox);
-
-	__spi_unlock();
-
-	return pkt;
+	return spi_dequeue_packet(&packet_inbox);
 }
 
 void spi_send_packet(struct spi_pl_packet *pkt)
 {
-	__spi_lock();
-
 	spi_add_last(&packet_outbox, pkt);
-	if (!spi_busy && !packet_outbox.current)
-		packet_outbox.current =
-			spi_queue_next_packet(&packet_outbox, SPI1_TX_DMA);
-
-	__spi_unlock();
-}
-
-static void spi_finish_transaction(void)
-{
-	dma_disable_channel(DMA1, SPI1_TX_DMA);
-	dma_set_number_of_data(DMA1, SPI1_TX_DMA, SPI_PACKET_DMA_SIZE);
-	dma_enable_channel(DMA1, SPI1_TX_DMA);
-
-	dma_disable_channel(DMA1, SPI1_RX_DMA);
-	dma_set_number_of_data(DMA1, SPI1_RX_DMA, SPI_PACKET_DMA_SIZE);
-	dma_enable_channel(DMA1, SPI1_RX_DMA);
-
-	/* Reset the peripheral to discard the TX DR */
-	spi_slave_init(SPI1);
-	spi_enable_crc(SPI1);
-	spi_slave_enable(SPI1);
 }
 
 static void spi_init_dma(void)
@@ -430,6 +307,7 @@ static void spi_init_dma(void)
 	dma_enable_memory_increment_mode(DMA1, SPI1_RX_DMA);
 	dma_disable_peripheral_increment_mode(DMA1, SPI1_RX_DMA);
 	dma_set_peripheral_address(DMA1, SPI1_RX_DMA, (uint32_t)&(SPI_DR(SPI1)));
+	dma_set_number_of_data(DMA1, SPI1_RX_DMA, SPI_PACKET_DMA_SIZE);
 	dma_enable_transfer_complete_interrupt(DMA1, SPI1_RX_DMA);
 	dma_enable_transfer_error_interrupt(DMA1, SPI1_RX_DMA);
 
@@ -441,6 +319,7 @@ static void spi_init_dma(void)
 	dma_enable_memory_increment_mode(DMA1, SPI1_TX_DMA);
 	dma_disable_peripheral_increment_mode(DMA1, SPI1_TX_DMA);
 	dma_set_peripheral_address(DMA1, SPI1_TX_DMA, (uint32_t)&(SPI_DR(SPI1)));
+	dma_set_number_of_data(DMA1, SPI1_TX_DMA, SPI_PACKET_DMA_SIZE - 1);
 	dma_enable_transfer_complete_interrupt(DMA1, SPI1_TX_DMA);
 	dma_enable_transfer_error_interrupt(DMA1, SPI1_TX_DMA);
 }
@@ -453,9 +332,6 @@ static void spi_init_packet_pool(void)
 		struct spi_pl_packet *pkt = &packet_pool[i];
 		spi_free_packet(pkt);
 	}
-
-	packet_outbox.current = spi_queue_next_packet(&packet_outbox, SPI1_TX_DMA);
-	packet_free.current = spi_queue_next_packet(&packet_free, SPI1_RX_DMA);
 }
 
 void spi_dump_packet(const char *indent, struct spi_pl_packet *pkt)
@@ -477,28 +353,14 @@ void spi_dump_packet(const char *indent, struct spi_pl_packet *pkt)
 	}
 }
 
-static void dump_list(struct spi_pl_packet_head *list, const char *name)
-{
-	struct spi_pl_packet *pkt;
-
-	pkt = list->next;
-	printf("%s (%p):\r\n", name, list);
-	while (pkt) {
-		spi_dump_packet(" ", pkt);
-		pkt = pkt->next;
-	}
-	printf("Current:"); spi_dump_packet("  ", list->current);
-	printf("Done:"); spi_dump_packet("  ", list->done);
-	printf("Last: %p\r\n", list->last);
-	printf("--\r\n");
-
-}
-
 void spi_dump_lists(void)
 {
-	dump_list(&packet_free, "packet_free");
-	dump_list(&packet_outbox, "packet_outbox");
-	dump_list(&packet_inbox, "packet_inbox");
+	printf("Free:\r\n");
+	dump_queue(&packet_free.queue);
+	printf("Outbox:\r\n");
+	dump_queue(&packet_outbox.queue);
+	printf("Inbox:\r\n");
+	dump_queue(&packet_inbox.queue);
 }
 
 void spi_init(void)
@@ -508,10 +370,6 @@ void spi_init(void)
 
 	spi_slave_init(SPI1);
 	spi_enable_crc(SPI1);
-
-	nvic_enable_irq(NVIC_DMA1_CHANNEL3_IRQ);
-	nvic_enable_irq(NVIC_DMA1_CHANNEL2_IRQ);
-	nvic_enable_irq(NVIC_SPI1_IRQ);
 
 	exti_select_source(GPIO4, GPIOA);
 	exti_set_trigger(GPIO4, EXTI_TRIGGER_BOTH);
@@ -523,4 +381,8 @@ void spi_init(void)
 		      GPIO_CNF_OUTPUT_ALTFN_PUSHPULL, GPIO6);
 	gpio_set_mode(GPIOA, GPIO_MODE_INPUT, GPIO_CNF_INPUT_FLOAT,
 	              GPIO4 | GPIO5 | GPIO7);
+
+	/* Set up the first transfer */
+	prepare_rx();
+	prepare_tx();
 }

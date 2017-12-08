@@ -18,9 +18,11 @@
 #ifndef __SPI_H__
 #define __SPI_H__
 
+#include "queue.h"
+
 #define SPI_PACKET_DATA_LEN 32
 struct spi_pl_packet {
-	struct spi_pl_packet *next;
+	struct queue_node *next;
 	uint8_t id;
 	uint8_t type;
 	uint8_t nparts;
