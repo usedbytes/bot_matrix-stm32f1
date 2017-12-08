@@ -75,7 +75,7 @@ struct spi_pl_packet_head {
 	 * Used as a dummy source/destination for DMA when there's no
 	 * packets to process
 	 */
-	uint8_t zero;
+	struct spi_pl_packet zero;
 };
 
 volatile bool spi_busy;
@@ -146,7 +146,9 @@ void exti4_isr(void)
 		__spi_trace('A');
 		__spi_trace_hex(SPI_SR(SPI1));
 
-		spi_enable_rx_dma(SPI1);
+		// Queue/start TX packet
+		dma_set_memory_address(DMA1, SPI1_TX_DMA, packet_outbox.dma_addr);
+		dma_enable_channel(DMA1, SPI1_TX_DMA);
 		spi_enable_tx_dma(SPI1);
 
 		__spi_trace('B');
@@ -155,7 +157,11 @@ void exti4_isr(void)
 		__spi_trace('Z');
 		__spi_trace_hex(SPI_SR(SPI1));
 
-		SPI_RX_LOCK = 1;
+		// Check if DMA finished
+		//   If yes
+		//	 Check CRC
+		//	 dispatch the packet and grab a new one
+		//   If no, reset DMA for this packet.
 
 		/* Disable and reset DMAs - keep the same addresses! */
 		spi_finish_transaction();
@@ -163,8 +169,6 @@ void exti4_isr(void)
 		if (!packet_outbox.current) {
 			packet_outbox.current = spi_queue_next_packet(&packet_outbox, SPI1_TX_DMA);
 		}
-
-		SPI_RX_LOCK = 0;
 	}
 }
 
@@ -304,10 +308,19 @@ static void spi_add_last(struct spi_pl_packet_head *list, struct spi_pl_packet *
 
 static struct spi_pl_packet *spi_dequeue_packet(struct spi_pl_packet_head *list)
 {
-	struct spi_pl_packet *pkt = list->next;
-	if (!pkt) {
-		return NULL;
+	struct spi_pl_packet *old_first, *next, *pkt = __ldrex(list->next);
+	while (true) {
+		if (!pkt) {
+			return NULL;
+		}
+		old_first = pkt;
+		next = ((volatile struct spi_pl_packet *)(old_first))->next;
+		pkt = compare_and_swap(list->next, old_first, next);
+		if (pkt == old_first)
+			return pkt;
 	}
+
+	return pkt;
 
 	list->next = pkt->next;
 	if (!list->next)
@@ -404,15 +417,32 @@ void spi_send_packet(struct spi_pl_packet *pkt)
 	__spi_unlock();
 }
 
+static void spi_finish_rx(void)
+{
+	if (dma_get_interrupt_flag(DMA1, SPI_RX_DMA, DMA_TCIF)) {
+		struct spi_pl_packet *pkt = packet_free.current;
+		if (pkt != &packet_free.zero) {
+			uint8_t status = SPI_SR(SPI1);
+			if (status & SPI_FLAG_CRCERR) {
+				pkt->flags |= SPI_FLAG_CRCERR;
+			}
+			spi_add_last(&packet_inbox, pkt);
+		}
+
+		dma_clear_interrupt_flags(DMA1, SPI1_RX_DMA, DMA_TEIF | DMA_HTIF | DMA_TCIF | DMA_GIF);
+	}
+
+}
+
 static void spi_finish_transaction(void)
 {
 	dma_disable_channel(DMA1, SPI1_TX_DMA);
 	dma_set_number_of_data(DMA1, SPI1_TX_DMA, SPI_PACKET_DMA_SIZE);
-	dma_enable_channel(DMA1, SPI1_TX_DMA);
+	//dma_enable_channel(DMA1, SPI1_TX_DMA);
 
 	dma_disable_channel(DMA1, SPI1_RX_DMA);
 	dma_set_number_of_data(DMA1, SPI1_RX_DMA, SPI_PACKET_DMA_SIZE);
-	dma_enable_channel(DMA1, SPI1_RX_DMA);
+	//dma_enable_channel(DMA1, SPI1_RX_DMA);
 
 	/* Reset the peripheral to discard the TX DR */
 	spi_slave_init(SPI1);
@@ -430,8 +460,8 @@ static void spi_init_dma(void)
 	dma_enable_memory_increment_mode(DMA1, SPI1_RX_DMA);
 	dma_disable_peripheral_increment_mode(DMA1, SPI1_RX_DMA);
 	dma_set_peripheral_address(DMA1, SPI1_RX_DMA, (uint32_t)&(SPI_DR(SPI1)));
-	dma_enable_transfer_complete_interrupt(DMA1, SPI1_RX_DMA);
-	dma_enable_transfer_error_interrupt(DMA1, SPI1_RX_DMA);
+	//dma_enable_transfer_complete_interrupt(DMA1, SPI1_RX_DMA);
+	//dma_enable_transfer_error_interrupt(DMA1, SPI1_RX_DMA);
 
 	dma_channel_reset(DMA1, SPI1_TX_DMA);
 	dma_disable_channel(DMA1, SPI1_TX_DMA);
@@ -441,8 +471,8 @@ static void spi_init_dma(void)
 	dma_enable_memory_increment_mode(DMA1, SPI1_TX_DMA);
 	dma_disable_peripheral_increment_mode(DMA1, SPI1_TX_DMA);
 	dma_set_peripheral_address(DMA1, SPI1_TX_DMA, (uint32_t)&(SPI_DR(SPI1)));
-	dma_enable_transfer_complete_interrupt(DMA1, SPI1_TX_DMA);
-	dma_enable_transfer_error_interrupt(DMA1, SPI1_TX_DMA);
+	//dma_enable_transfer_complete_interrupt(DMA1, SPI1_TX_DMA);
+	//dma_enable_transfer_error_interrupt(DMA1, SPI1_TX_DMA);
 }
 
 static void spi_init_packet_pool(void)
