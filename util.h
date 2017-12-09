@@ -24,5 +24,7 @@
 void panic(void);
 
 void blink_us(uint32_t ontime);
+void led_on(void);
+void led_off(void);
 
 #endif /* __UTIL_H__ */
