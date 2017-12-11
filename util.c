@@ -20,11 +20,21 @@
 #include "util.h"
 #include "systick.h"
 
-void blink_us(uint32_t ontime)
+void led_on(void)
 {
 	gpio_clear(GPIOC, GPIO13);
-	delay_us(ontime);
+}
+
+void led_off(void)
+{
 	gpio_set(GPIOC, GPIO13);
+}
+
+void blink_us(uint32_t ontime)
+{
+	led_on();
+	delay_us(ontime);
+	led_off();
 	delay_us(2);
 }
 
