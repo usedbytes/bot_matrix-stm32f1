@@ -14,6 +14,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <libopencm3/cm3/cortex.h>
 #include <libopencm3/cm3/nvic.h>
 #include <libopencm3/cm3/systick.h>
 #include <libopencm3/stm32/dma.h>
@@ -284,6 +285,12 @@ void spi_free_packet(struct spi_pl_packet *pkt)
 
 struct spi_pl_packet *spi_alloc_packet(void)
 {
+	/*
+	 * Interesting macro - disables interrupts whilst in this function.
+	 * All packet allocation in the SPI state machine is off the fast path
+	 * so this shouldn't cause any troubles.
+	 */
+	CM_ATOMIC_CONTEXT();
 	return spi_dequeue_packet(&packet_free);
 }
 
