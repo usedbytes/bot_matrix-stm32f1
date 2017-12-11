@@ -47,7 +47,7 @@ void period_counter_update(struct period_counter *pc)
 
 	if (timer_get_flag(pc->timer, TIM_SR_CC2IF)) {
 		struct period_counter_channel *c = &pc->ch2;
-		uint16_t cc = TIM_CCR1(TIM4);
+		uint16_t cc = TIM_CCR2(TIM4);
 		c->period = ((c->ovf << 16) + cc) - c->cnt;
 		c->ovf = 0;
 		c->cnt = cc;
