@@ -48,10 +48,7 @@ static void setup_irq_priorities(void)
 		uint32_t irqn;
 		uint8_t  prio;
 	} map[] = {
-		{ NVIC_SPI1_IRQ,            (0 << 6) | (0 << 4) },
 		{ NVIC_EXTI4_IRQ,           (0 << 6) | (0 << 4) },
-		{ NVIC_DMA1_CHANNEL3_IRQ,   (0 << 6) | (2 << 4) },
-		{ NVIC_DMA1_CHANNEL2_IRQ,   (0 << 6) | (1 << 4) },
 		{ NVIC_TIM4_IRQ,            (1 << 6) | (0 << 4) },
 		{ NVIC_USB_LP_CAN_RX0_IRQ,  (2 << 6) | (0 << 4) },
 		{ NVIC_USB_WAKEUP_IRQ,      (2 << 6) | (1 << 4) },
