@@ -126,12 +126,27 @@ void motor_set_speed(enum hbridge_channel channel, enum direction dir,
 		     uint16_t speed)
 {
 	printf("Motor set speed: %d %d 0x%x\r\n", channel, dir, speed);
+
 	if (dir != motors[channel].dir) {
 		motors[channel].changing_direction = 1;
 	}
+
+	if (speed > 100)
+		speed = 100;
+
+	/*
+	 * XXX: Apply the speed/percentage function - should be abstracted?
+	 * This gives a range 0-100% of around 50-1000
+	 */
+	int y = (((int)(((50 - 1000) / 100.0f) * 1024)) * speed) >> 10;
+	y += 1000;
+	if (y < 50) {
+		y = 50;
+	}
+
 	motors[channel].dir = dir;
-	motors[channel].setpoint = speed;
-	controller_set(&motors[channel].controller, speed);
+	motors[channel].setpoint = y;
+	controller_set(&motors[channel].controller, y);
 }
 
 void motor_disable_loop()
