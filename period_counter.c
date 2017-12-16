@@ -115,10 +115,18 @@ void period_counter_disable(struct period_counter *pc, enum pc_channel ch)
 	switch (ch) {
 	case PC_CH1:
 		timer_disable_irq(pc->timer, TIM_DIER_CC1IE);
+		pc->ch1.period = 0;
+		pc->ch1.ovf = 0;
+		pc->ch1.cnt = 0;
+		pc->ch1.sem = false;
 		pc->ch1.active = false;
 		break;
 	case PC_CH2:
 		timer_disable_irq(pc->timer, TIM_DIER_CC2IE);
+		pc->ch2.period = 0;
+		pc->ch2.ovf = 0;
+		pc->ch2.cnt = 0;
+		pc->ch2.sem = false;
 		pc->ch2.active = false;
 		break;
 	}
