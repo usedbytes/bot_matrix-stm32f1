@@ -180,11 +180,14 @@ static void prepare_rx(void)
 	 * It's not worth worrying about, this moves lots of work off the
 	 * critical path.
 	 */
-	struct spi_pl_packet *pkt = spi_alloc_packet();
+	struct spi_pl_packet *pkt = packet_free.current;
 	if (!pkt) {
-		pkt = &packet_free.zero;
+		pkt = spi_alloc_packet();
+		if (!pkt) {
+			pkt = &packet_free.zero;
+		}
+		packet_free.current = pkt;
 	}
-	packet_free.current = pkt;
 
 	dma_set_memory_address(DMA1, SPI1_RX_DMA, spi_pl_packet_dma_addr(pkt));
 }
@@ -278,6 +281,9 @@ void spi_slave_disable(uint32_t spidev)
 
 void spi_free_packet(struct spi_pl_packet *pkt)
 {
+	if (!pkt)
+		return;
+
 	memset(pkt, 0, sizeof(*pkt));
 
 	spi_add_last(&packet_free, pkt);
