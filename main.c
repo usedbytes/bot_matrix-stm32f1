@@ -243,6 +243,16 @@ static void pid_timer_init(uint32_t timer)
 	timer_enable_counter(timer);
 }
 
+static void ep0xfe_process_packet(struct spi_pl_packet *pkt)
+{
+	if ((pkt->type != 0xfe) || (pkt->flags & SPI_FLAG_ERROR))
+		return;
+
+	printf("Reset.\r\n");
+
+	scb_reset_system();
+}
+
 int main(void)
 {
 	rcc_clock_setup_in_hse_8mhz_out_72mhz();
@@ -323,6 +333,10 @@ int main(void)
 					break;
 				case 6:
 					ep6_process_packet(pkt);
+					spi_free_packet(pkt);
+					break;
+				case 0xfe:
+					ep0xfe_process_packet(pkt);
 					spi_free_packet(pkt);
 					break;
 				default:
