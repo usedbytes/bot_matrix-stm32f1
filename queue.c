@@ -57,13 +57,18 @@ void dump_queue(struct queue *queue)
 
 void queue_enqueue(struct queue *queue, struct queue_node *node)
 {
+	queue_enqueue_multi(queue, node, node);
+}
+
+void queue_enqueue_multi(struct queue *queue, struct queue_node *next, struct queue_node *last)
+{
 	struct queue_node *prev;
 
-	node->next = NULL;
+	last->next = NULL;
 
-	prev = (struct queue_node *)atomic_exchange((uint32_t *)(&queue->last), (uint32_t)(node));
+	prev = (struct queue_node *)atomic_exchange((uint32_t *)(&queue->last), (uint32_t)(last));
 	if (prev)
-		prev->next = node;
+		prev->next = next;
 }
 
 struct queue_node *queue_dequeue(struct queue *queue)

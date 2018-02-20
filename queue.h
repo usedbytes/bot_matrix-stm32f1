@@ -18,6 +18,7 @@ struct queue_node;
 
 void dump_queue(struct queue *queue);
 void queue_enqueue(struct queue *queue, struct queue_node *node);
+void queue_enqueue_multi(struct queue *queue, struct queue_node *next, struct queue_node *last);
 struct queue_node *queue_dequeue(struct queue *queue);
 
 #endif /* __QUEUE_H__ */
