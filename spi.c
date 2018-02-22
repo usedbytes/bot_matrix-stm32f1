@@ -404,3 +404,45 @@ void spi_init(void)
 	prepare_rx();
 	prepare_tx();
 }
+
+int spi_packetise_stream(struct spi_pl_packet *into, unsigned int offset, const char *data, uint32_t len)
+{
+	struct spi_pl_packet *pkt = into;
+	unsigned npkts = (len + offset + (SPI_PACKET_DATA_LEN - 1)) / SPI_PACKET_DATA_LEN;
+	unsigned int ndata = SPI_PACKET_DATA_LEN - offset;
+	uint8_t *p;
+
+	/*
+	 * If we're appending, then we need to add on the number of new packets
+	 * to nparts, and move to the end of the existing list.
+	 */
+	while (pkt->next) {
+		pkt->nparts += npkts - 1;
+		pkt = (struct spi_pl_packet *)pkt->next;
+	}
+
+	p = pkt->data + offset;
+	while (npkts--) {
+		pkt->nparts = npkts;
+
+		while (len && ndata) {
+			*p = *data;
+			p++; data++;
+			len--; ndata--;
+		}
+
+		if (npkts) {
+			pkt->next = (struct queue_node *)spi_alloc_packet();
+			if (!pkt->next) {
+				return -1;
+			}
+
+			pkt = (struct spi_pl_packet *)pkt->next;
+			pkt->type = into->type;
+			p = pkt->data;
+			ndata = SPI_PACKET_DATA_LEN;
+		}
+	}
+
+	return p - (pkt->data);
+}
