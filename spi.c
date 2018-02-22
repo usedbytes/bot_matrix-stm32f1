@@ -354,12 +354,12 @@ static void spi_init_packet_pool(void)
 
 void spi_dump_packet(const char *indent, struct spi_pl_packet *pkt)
 {
-	uint8_t *c = pkt->data;
 	if (pkt) {
+		uint8_t *c = pkt->data;
 		printf("%s%p %d %d %d %02x\r\n", indent, pkt, pkt->id, pkt->type,
 				pkt->nparts, pkt->flags);
 		printf("%s  ", indent);
-		while (*c && (c < pkt->data + sizeof(pkt->data))) {
+		while (c < pkt->data + sizeof(pkt->data)) {
 			printf("%02x ", *c);
 			c++;
 		}
