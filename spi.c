@@ -281,10 +281,15 @@ void spi_slave_disable(uint32_t spidev)
 
 void spi_free_packet(struct spi_pl_packet *pkt)
 {
+	struct spi_pl_packet *tmp = pkt;
+
 	if (!pkt)
 		return;
 
-	memset(pkt, 0, sizeof(*pkt));
+	while (tmp) {
+		memset(&pkt->id, 0, sizeof(*pkt) - offsetof(struct spi_pl_packet, id));
+		tmp = (struct spi_pl_packet *)tmp->next;
+	}
 
 	spi_add_last(&packet_free, pkt);
 }
