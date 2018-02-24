@@ -55,12 +55,12 @@ struct motor motors[] = {
 };
 
 const struct gain gains[] = {
-	{ FP_VAL(-1), 0, 0 },
-	{ FP_VAL(-2), 0, 0 },
-	{ FP_VAL(-5), 0, 0 },
-	{ FP_VAL(-10), 0, 0 },
-	{ FP_VAL(-50), 0, 0 },
 	{ FP_VAL(-130), 0, 0 },
+	{ FP_VAL(-50), 0, 0 },
+	{ FP_VAL(-10), 0, 0 },
+	{ FP_VAL(-5), 0, 0 },
+	{ FP_VAL(-2), 0, 0 },
+	{ FP_VAL(-1), 0, 0 },
 	/*
 	{ FP_VAL(-1), 0, 0 },
 	{ FP_VAL(-3), 0, 0 },
@@ -76,12 +76,12 @@ const struct gain gains[] = {
 };
 
 const uint16_t gs_limits[] = {
-	2000,
-	4000,
-	8000,
-	20000,
-	40000,
-	65535,
+	100,
+	200,
+	400,
+	700,
+	800,
+	10000,
 	/*
 	4000,
 	5000,
@@ -192,11 +192,11 @@ void motor_enable_loop()
 	pid_timer_enable(TIM3);
 }
 
-static uint8_t gain_schedule(uint16_t duty)
+static uint8_t gain_schedule(uint32_t point)
 {
 	uint8_t gs_idx;
 	for (gs_idx = 0; gs_idx < sizeof(gains) / sizeof(gains[0]); gs_idx++) {
-		if (duty <= gs_limits[gs_idx])
+		if (point <= gs_limits[gs_idx])
 			break;
 	}
 	return gs_idx;
@@ -225,7 +225,9 @@ static void motor_tick(struct motor *m)
 		m->enabling = 0;
 	}
 
-	gs_idx = gain_schedule(m->duty);
+	uint64_t mid = (m->count + m->setpoint) >> 1;
+
+	gs_idx = gain_schedule(mid);
 	delta = controller_tick(&m->controller, m->count, gs_idx);
 	if (!delta)
 		return;
