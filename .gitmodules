@@ -1,3 +1,6 @@
 [submodule "libopencm3"]
 	path = libopencm3
 	url = https://github.com/libopencm3/libopencm3.git
+[submodule "vl53l0x"]
+	path = vl53l0x
+	url = hactar.usedbytes.com:repos/bot_matrix-stm32f1-vl53l0x.git
