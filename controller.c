@@ -28,6 +28,12 @@ void controller_init(struct controller *c, const struct gain *gs, uint8_t ngains
 	c->ngains = ngains;
 }
 
+void controller_reset(struct controller *c)
+{
+	c->skip = 1;
+	c->ierr = c->ilimit = c->err = 0;
+}
+
 void controller_set_gains(struct controller *c, int32_t Kc, int32_t Kd, int32_t Ki) {
 	if (Kc || Kd || Ki) {
 		c->gain.Kc = Kc;

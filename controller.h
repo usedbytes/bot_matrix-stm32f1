@@ -44,6 +44,7 @@ struct controller {
 };
 
 void controller_init(struct controller *c, const struct gain *gains, uint8_t ngains);
+void controller_reset(struct controller *c);
 void controller_set_gains(struct controller *c, int32_t Kc, int32_t Kd, int32_t Ki);
 void controller_set_ilimit(struct controller *c, int32_t ilimit);
 void controller_set(struct controller *c, uint32_t set_point);
