@@ -201,6 +201,8 @@ int main(void)
 #endif
 			if (pkt->flags & SPI_FLAG_CRCERR) {
 				printf("CRC error in packet id %d\r\n", pkt->id);
+				spi_free_packet(pkt);
+				continue;
 			}
 			switch (pkt->type) {
 				case 0:
