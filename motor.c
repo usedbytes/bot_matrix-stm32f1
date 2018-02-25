@@ -285,7 +285,5 @@ void motor_init()
 	pid_timer_init(TIM3);
 
 	controller_init(&motors[HBRIDGE_A].controller, gains, sizeof(gains) / sizeof(gains[0]));
-	controller_set_gains(&motors[HBRIDGE_A].controller, FP_VAL(-1), 0, 0);
 	controller_init(&motors[HBRIDGE_B].controller, gains, sizeof(gains) / sizeof(gains[0]));
-	controller_set_gains(&motors[HBRIDGE_B].controller, FP_VAL(-1), 0, 0);
 }

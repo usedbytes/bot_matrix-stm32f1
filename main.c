@@ -188,6 +188,8 @@ int main(void)
 
 	motor_init();
 	motor_enable_loop();
+	motor_set_speed(HBRIDGE_A, DIRECTION_FWD, 0);
+	motor_set_speed(HBRIDGE_B, DIRECTION_FWD, 0);
 
 	setup_irq_priorities();
 
