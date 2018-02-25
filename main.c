@@ -18,8 +18,6 @@
 
 #include "systick.h"
 
-#define TRACE() printf("%s:%d\r\n", __func__, __LINE__)
-
 static void setup_irq_priorities(void)
 {
 	struct map_entry {
