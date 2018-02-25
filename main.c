@@ -58,33 +58,6 @@ static void setup_gpio(void) {
 	GPIOC_CRH |= (GPIO_MODE_OUTPUT_2_MHZ << ((13 - 8) * 4));
 }
 
-static void ep1_process_packet(struct spi_pl_packet *pkt)
-{
-	if ((pkt->type != 1) || (pkt->flags & SPI_FLAG_ERROR))
-		return;
-
-	if (pkt->data[0])
-		gpio_clear(GPIOC, GPIO13);
-	else
-		gpio_set(GPIOC, GPIO13);
-}
-
-static void ep0_process_packet(struct spi_pl_packet *pkt)
-{
-	static char str[256] = { 0 };
-
-	return;
-
-	if ((pkt->type != 0) || (pkt->flags & SPI_FLAG_ERROR))
-		return;
-
-	strncat(str, (char *)pkt->data, SPI_PACKET_DATA_LEN);
-	if (!pkt->nparts) {
-		printf("%s\r\n", str);
-		str[0] = '\0';
-	}
-}
-
 static void ep0xfe_process_packet(struct spi_pl_packet *pkt)
 {
 	if ((pkt->type != 0xfe) || (pkt->flags & SPI_FLAG_ERROR))
@@ -207,40 +180,10 @@ int main(void)
 				continue;
 			}
 			switch (pkt->type) {
-				case 0:
-					ep0_process_packet(pkt);
-					spi_free_packet(pkt);
-					break;
-				case 1:
-					ep1_process_packet(pkt);
-					spi_free_packet(pkt);
-					break;
 				case EP_MOTORS:
 					motor_process_packet(pkt);
 					spi_free_packet(pkt);
 					break;
-				/*
-				case 2:
-					ep2_process_packet(pkt);
-					spi_free_packet(pkt);
-					break;
-				case 3:
-					ep3_process_packet(pkt);
-					spi_free_packet(pkt);
-					break;
-				case 4:
-					ep4_process_packet(pkt);
-					spi_free_packet(pkt);
-					break;
-				case 5:
-					ep5_process_packet(pkt);
-					spi_free_packet(pkt);
-					break;
-				case 6:
-					ep6_process_packet(pkt);
-					spi_free_packet(pkt);
-					break;
-				*/
 				case 0xfe:
 					ep0xfe_process_packet(pkt);
 					spi_free_packet(pkt);
