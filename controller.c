@@ -62,12 +62,27 @@ int32_t controller_tick(struct controller *c, uint32_t pv, uint8_t gs_idx) {
 	int32_t tc, td, ti, ret;
 	int32_t err, derr;
 
-	if (pv == 0 || gs_idx >= c->ngains) {
-		c->skip++;
+	if (gs_idx >= c->ngains) {
 		return 0;
 	}
 
 	gains = c->gain_override ? &c->gain : &c->gains[gs_idx];
+
+	/*
+	 * If we aren't moving and we're meant to be, nudge up the duty.
+	 * It's a horrible hack...
+	 */
+	if (pv == 0) {
+		//c->skip++;
+		if (c->set_point != 0) {
+			sprintf(dbg, "sp: %ld, pv: %ld\r\n"
+				"return 100;",
+				c->set_point, pv);
+			cp = true;
+			return 1000;
+		}
+		return 0;
+	}
 
 	err = c->set_point - pv;
 	c->ierr += ((err * 25) / (256 * c->skip));
@@ -85,9 +100,10 @@ int32_t controller_tick(struct controller *c, uint32_t pv, uint8_t gs_idx) {
 	ti = ((int64_t)(c->ierr) * gains->Ki) / 65536;
 	ret = tc + td + ti;
 
-	sprintf(dbg, "idx: %d, Kc: %ld, Kd: %ld, Ki: %ld\r\n"
+	sprintf(dbg, "sp: %ld, pv: %ld\r\n"
+		"idx: %d, Kc: %ld, Kd: %ld, Ki: %ld\r\n"
 		"err: %li, derr: %li, ierr: %li\r\n"
-		"tc: %li, td: %li, ti: %li ret: %li\r\n", gs_idx, gains->Kc, gains->Kd, gains->Ki, err, derr, c->ierr, tc, td, ti, ret);
+		"tc: %li, td: %li, ti: %li ret: %li\r\n", c->set_point, pv, gs_idx, gains->Kc, gains->Kd, gains->Ki, err, derr, c->ierr, tc, td, ti, ret);
 	cp = true;
 
 	return ret;

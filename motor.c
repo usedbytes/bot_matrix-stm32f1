@@ -38,6 +38,7 @@ struct motor {
 	enum hbridge_channel channel;
 	enum pc_channel pc_channel;
 	enum direction dir;
+	uint8_t enabling;
 
 	int changing_direction :1;
 };
@@ -55,6 +56,13 @@ struct motor motors[] = {
 
 const struct gain gains[] = {
 	{ FP_VAL(-1), 0, 0 },
+	{ FP_VAL(-2), 0, 0 },
+	{ FP_VAL(-5), 0, 0 },
+	{ FP_VAL(-10), 0, 0 },
+	{ FP_VAL(-50), 0, 0 },
+	{ FP_VAL(-130), 0, 0 },
+	/*
+	{ FP_VAL(-1), 0, 0 },
 	{ FP_VAL(-3), 0, 0 },
 	{ FP_VAL(-5), 0, 0 },
 	{ FP_VAL(-8), 0, 0 },
@@ -64,9 +72,17 @@ const struct gain gains[] = {
 
 	{ FP_VAL(-130), 0, 0 },
 	{ FP_VAL(-200), 0, 0 },
+	*/
 };
 
 const uint16_t gs_limits[] = {
+	2000,
+	4000,
+	8000,
+	20000,
+	40000,
+	65535,
+	/*
 	4000,
 	5000,
 	6000,
@@ -77,6 +93,7 @@ const uint16_t gs_limits[] = {
 
 	30000,
 	65535,
+	*/
 };
 
 struct period_counter pc = {
@@ -125,7 +142,16 @@ static void pid_timer_disable(uint32_t timer)
 void motor_set_speed(enum hbridge_channel channel, enum direction dir,
 		     uint16_t speed)
 {
-	printf("Motor set speed: %d %d 0x%x\r\n", channel, dir, speed);
+	if (speed == 0) {
+		period_counter_disable(&pc, motors[channel].pc_channel);
+		motors[channel].dir = dir;
+		motors[channel].setpoint = 0;
+		controller_set(&motors[channel].controller, 0);
+		return;
+	} else if (motors[channel].setpoint == 0) {
+		motors[channel].enabling = 10;
+		period_counter_enable(&pc, motors[channel].pc_channel);
+	}
 
 	if (dir != motors[channel].dir) {
 		motors[channel].changing_direction = 1;
@@ -181,6 +207,12 @@ static void motor_tick(struct motor *m)
 	int32_t delta;
 	uint8_t gs_idx;
 
+	if (m->setpoint == 0) {
+		m->duty = 0;
+		hbridge_set_duty(&hb, m->channel, m->dir, 0);
+		return;
+	}
+
 	if (m->changing_direction) {
 		hbridge_set_duty(&hb, m->channel, m->dir, 0);
 		m->changing_direction = 0;
@@ -188,15 +220,20 @@ static void motor_tick(struct motor *m)
 	}
 
 	m->count = period_counter_get(&pc, m->pc_channel);
+	if (m->enabling && m->count != 0) {
+		m->count = 0;
+		m->enabling = 0;
+	}
+
 	gs_idx = gain_schedule(m->duty);
 	delta = controller_tick(&m->controller, m->count, gs_idx);
 	if (!delta)
 		return;
 
-	if (m->duty + delta > 0xffff) {
-		m->duty = 0xffff;
-	} else if ((delta < 0) && (-delta > (int32_t)m->duty)) {
+	if ((delta < 0) && (-delta > (int32_t)m->duty)) {
 		m->duty = 0;
+	} else if (m->duty + delta > 0xffff) {
+		m->duty = 0xffff;
 	} else {
 		m->duty += delta;
 	}
@@ -213,7 +250,7 @@ struct motor_data {
 		uint32_t count;
 		uint32_t setpoint;
 		uint16_t duty;
-		uint16_t pad;
+		uint16_t enabling;
 	} motors[2];
 };
 
@@ -232,9 +269,11 @@ void tim3_isr(void)
 		d->motors[0].count = motors[0].count;
 		d->motors[0].setpoint = motors[0].setpoint;
 		d->motors[0].duty = motors[0].duty;
+		d->motors[0].enabling = motors[0].enabling;
 		d->motors[1].count = motors[1].count;
 		d->motors[1].setpoint = motors[1].setpoint;
 		d->motors[1].duty = motors[1].duty;
+		d->motors[1].enabling = motors[1].enabling;
 
 		spi_send_packet(pkt);
 	}
@@ -268,8 +307,6 @@ struct motor_cmd {
 void motor_process_packet(struct spi_pl_packet *pkt)
 {
 	struct motor_cmd *cmd = (struct motor_cmd *)pkt->data;
-
-	printf("Motor cmd: %d\r\n", cmd->type);
 
 	if (cmd->type == MOTOR_SET) {
 		struct motor_cmd_set *set = &cmd->payloads.set;
