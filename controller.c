@@ -19,9 +19,6 @@
 
 #include "controller.h"
 
-char dbg[256];
-volatile bool cp;
-
 void controller_init(struct controller *c, const struct gain *gs, uint8_t ngains) {
 	c->skip = 1;
 	c->gains = gs;
@@ -75,10 +72,6 @@ int32_t controller_tick(struct controller *c, uint32_t pv, uint8_t gs_idx) {
 	if (pv == 0) {
 		//c->skip++;
 		if (c->set_point != 0) {
-			sprintf(dbg, "sp: %ld, pv: %ld\r\n"
-				"return 100;",
-				c->set_point, pv);
-			cp = true;
 			return 1000;
 		}
 		return 0;
@@ -99,12 +92,6 @@ int32_t controller_tick(struct controller *c, uint32_t pv, uint8_t gs_idx) {
 	td = ((int64_t)(derr) * gains->Kd) / 65536;
 	ti = ((int64_t)(c->ierr) * gains->Ki) / 65536;
 	ret = tc + td + ti;
-
-	sprintf(dbg, "sp: %ld, pv: %ld\r\n"
-		"idx: %d, Kc: %ld, Kd: %ld, Ki: %ld\r\n"
-		"err: %li, derr: %li, ierr: %li\r\n"
-		"tc: %li, td: %li, ti: %li ret: %li\r\n", c->set_point, pv, gs_idx, gains->Kc, gains->Kd, gains->Ki, err, derr, c->ierr, tc, td, ti, ret);
-	cp = true;
 
 	return ret;
 }

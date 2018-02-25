@@ -47,9 +47,6 @@ static void setup_irq_priorities(void)
 	};
 }
 
-extern char dbg[256];
-extern volatile bool cp;
-
 static void setup_gpio(void) {
 	RCC_APB2ENR |= RCC_APB2ENR_IOPCEN;
 	GPIOC_CRH = (GPIO_CNF_OUTPUT_PUSHPULL << (((13 - 8) * 4) + 2));
@@ -186,11 +183,6 @@ int main(void)
 					// Bounce anything unknown
 					spi_send_packet(pkt);
 			}
-		}
-
-		if (cp) {
-			printf("%s", dbg);
-			cp = false;
 		}
 
 		if (msTicks - time >= 100) {
