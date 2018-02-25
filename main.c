@@ -58,8 +58,6 @@ static void ep0xfe_process_packet(struct spi_pl_packet *pkt)
 	if ((pkt->type != 0xfe) || (pkt->flags & SPI_FLAG_ERROR))
 		return;
 
-	printf("Reset.\r\n");
-
 	scb_reset_system();
 }
 
