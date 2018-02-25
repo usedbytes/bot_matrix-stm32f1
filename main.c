@@ -361,6 +361,9 @@ int main(void)
 	while (1) {
 		spi_dump_trace();
 		while ((pkt = spi_receive_packet())) {
+#ifdef DEBUG
+			spi_dump_packet("", pkt);
+#endif
 			if (pkt->flags & SPI_FLAG_CRCERR) {
 				printf("CRC error in packet id %d\r\n", pkt->id);
 			}
@@ -398,6 +401,7 @@ int main(void)
 					spi_free_packet(pkt);
 					break;
 				default:
+					// Bounce anything unknown
 					spi_send_packet(pkt);
 			}
 		}
@@ -409,14 +413,10 @@ int main(void)
 			printf("Count: %lu\r\n", period_counter_get(&pc, PC_CH1));
 		}
 
-		/*
 		if (msTicks - time >= 100) {
 			time = msTicks;
-
-			printf("Count: %lu\r\n", period_counter_get(&pc, PC_CH1));
-			printf("Duty: %u\r\n", duty);
+			// Do something periodically...
 		}
-		*/
 	}
 
 	return 0;
