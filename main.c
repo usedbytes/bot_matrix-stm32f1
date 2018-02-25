@@ -156,9 +156,6 @@ int main(void)
 
 	gpio_set(GPIOC, GPIO13);
 
-	while (!usb_usart_dtr());
-	printf("\r\nStandard I/O Example.\r\n");
-
 	motor_init();
 	motor_enable_loop();
 	motor_set_speed(HBRIDGE_A, DIRECTION_FWD, 0);
