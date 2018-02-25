@@ -11,6 +11,7 @@
 #include <stdarg.h>
 
 #include "hbridge.h"
+#include "log.h"
 #include "motor.h"
 #include "pwm.h"
 #include "spi.h"
@@ -106,7 +107,7 @@ int main(void)
 			spi_dump_packet("", pkt);
 #endif
 			if (pkt->flags & SPI_FLAG_CRCERR) {
-				printf("CRC error in packet id %d\r\n", pkt->id);
+				log_err("CRC error in packet id %d\n", (uint32_t)pkt->id);
 				spi_free_packet(pkt);
 				continue;
 			}
