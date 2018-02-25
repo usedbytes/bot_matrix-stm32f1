@@ -144,6 +144,7 @@ uint32_t period_counter_get(struct period_counter *pc, enum pc_channel ch)
 	}
 
 	if (c->active && c->sem) {
+		c->sem = false;
 		return c->period;
 	}
 
