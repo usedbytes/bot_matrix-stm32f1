@@ -197,7 +197,6 @@ void tim4_isr(void)
 	period_counter_update(&pc);
 }
 
-volatile uint16_t duty = 0x4000;
 void tim3_isr(void)
 {
 	int32_t delta = 0;
