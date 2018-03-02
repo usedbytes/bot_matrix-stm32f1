@@ -28,8 +28,6 @@
 
 #include "systick.h"
 
-#define DEBUG
-
 struct motor {
 	struct controller controller;
 	uint32_t duty;
@@ -264,7 +262,6 @@ void tim3_isr(void)
 	motor_tick(&motors[HBRIDGE_A]);
 	motor_tick(&motors[HBRIDGE_B]);
 
-#ifdef DEBUG
 	struct spi_pl_packet *pkt = spi_alloc_packet();
 	if (pkt) {
 		struct motor_data *d = (struct motor_data *)pkt->data;
@@ -281,7 +278,6 @@ void tim3_isr(void)
 
 		spi_send_packet(pkt);
 	}
-#endif
 }
 
 void tim4_isr(void)
