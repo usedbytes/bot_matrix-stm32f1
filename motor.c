@@ -48,7 +48,7 @@ struct motor_data {
 	uint8_t pad;
 	uint16_t duty;
 	uint32_t period;
-	uint32_t count;
+	int32_t count;
 };
 
 struct motor motors[] = {
@@ -215,6 +215,7 @@ static uint8_t gain_schedule(uint32_t point)
 static void motor_tick(struct motor *m)
 {
 	int32_t delta;
+	int32_t count;
 	uint8_t gs_idx;
 
 	if (m->setpoint == 0) {
@@ -235,7 +236,13 @@ static void motor_tick(struct motor *m)
 		m->enabling = 0;
 	}
 
-	m->count = period_counter_get_total(&pc, m->pc_channel);
+	count = period_counter_get_total(&pc, m->pc_channel);
+	period_counter_reset_total(&pc, m->pc_channel);
+	if (m->dir== DIRECTION_FWD) {
+		m->count += count;
+	} else if (m->dir == DIRECTION_REV) {
+		m->count -= count;
+	}
 
 	uint64_t mid = (m->period + m->setpoint) >> 1;
 
