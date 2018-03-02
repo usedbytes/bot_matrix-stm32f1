@@ -150,19 +150,21 @@ static void pid_timer_disable(uint32_t timer)
 void motor_set_speed(enum hbridge_channel channel, enum direction dir,
 		     uint16_t speed)
 {
+	struct motor *m = &motors[channel];
+
 	if (speed == 0) {
-		period_counter_disable(&pc, motors[channel].pc_channel);
-		motors[channel].dir = dir;
-		motors[channel].setpoint = 0;
-		controller_set(&motors[channel].controller, 0);
+		period_counter_disable(&pc, m->pc_channel);
+		m->dir = dir;
+		m->setpoint = 0;
+		controller_set(&m->controller, 0);
 		return;
-	} else if (motors[channel].setpoint == 0) {
-		motors[channel].enabling = 10;
-		period_counter_enable(&pc, motors[channel].pc_channel);
+	} else if (m->setpoint == 0) {
+		m->enabling = 10;
+		period_counter_enable(&pc, m->pc_channel);
 	}
 
-	if (dir != motors[channel].dir) {
-		motors[channel].changing_direction = 1;
+	if (dir != m->dir) {
+		m->changing_direction = 1;
 	}
 
 	if (speed > 100)
@@ -178,9 +180,9 @@ void motor_set_speed(enum hbridge_channel channel, enum direction dir,
 		y = 50;
 	}
 
-	motors[channel].dir = dir;
-	motors[channel].setpoint = y;
-	controller_set(&motors[channel].controller, y);
+	m->dir = dir;
+	m->setpoint = y;
+	controller_set(&m->controller, y);
 }
 
 void motor_disable_loop()
