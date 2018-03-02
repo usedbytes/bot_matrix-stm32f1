@@ -33,6 +33,7 @@
 struct motor {
 	struct controller controller;
 	uint32_t duty;
+	uint32_t period;
 	uint32_t count;
 	uint32_t setpoint;
 	enum hbridge_channel channel;
@@ -219,16 +220,18 @@ static void motor_tick(struct motor *m)
 		return;
 	}
 
-	m->count = period_counter_get(&pc, m->pc_channel);
-	if (m->enabling && m->count != 0) {
-		m->count = 0;
+	m->period = period_counter_get(&pc, m->pc_channel);
+	if (m->enabling && m->period != 0) {
+		m->period = 0;
 		m->enabling = 0;
 	}
 
-	uint64_t mid = (m->count + m->setpoint) >> 1;
+	m->count = period_counter_get_total(&pc, m->pc_channel);
+
+	uint64_t mid = (m->period + m->setpoint) >> 1;
 
 	gs_idx = gain_schedule(mid);
-	delta = controller_tick(&m->controller, m->count, gs_idx);
+	delta = controller_tick(&m->controller, m->period, gs_idx);
 	if (!delta)
 		return;
 
@@ -250,9 +253,8 @@ struct motor_data {
 	uint32_t timestamp;
 	struct {
 		uint32_t count;
-		uint32_t setpoint;
+		uint16_t period;
 		uint16_t duty;
-		uint16_t enabling;
 	} motors[2];
 };
 
@@ -268,14 +270,14 @@ void tim3_isr(void)
 		struct motor_data *d = (struct motor_data *)pkt->data;
 		pkt->type = 15;
 		d->timestamp = msTicks;
+
 		d->motors[0].count = motors[0].count;
-		d->motors[0].setpoint = motors[0].setpoint;
+		d->motors[0].period = motors[0].period > 0xffff ? 0 : motors[0].period;
 		d->motors[0].duty = motors[0].duty;
-		d->motors[0].enabling = motors[0].enabling;
+
 		d->motors[1].count = motors[1].count;
-		d->motors[1].setpoint = motors[1].setpoint;
+		d->motors[1].period = motors[1].period > 0xffff ? 0 : motors[1].period;
 		d->motors[1].duty = motors[1].duty;
-		d->motors[1].enabling = motors[1].enabling;
 
 		spi_send_packet(pkt);
 	}
