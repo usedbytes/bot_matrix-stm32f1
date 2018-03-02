@@ -42,6 +42,15 @@ struct motor {
 	int changing_direction :1;
 };
 
+struct motor_data {
+	uint32_t timestamp;
+	uint8_t channel;
+	uint8_t pad;
+	uint16_t duty;
+	uint32_t period;
+	uint32_t count;
+};
+
 struct motor motors[] = {
 	[HBRIDGE_A] = {
 		.channel = HBRIDGE_A,
@@ -245,39 +254,26 @@ static void motor_tick(struct motor *m)
 		m->duty = 3000;
 	}
 	hbridge_set_duty(&hb, m->channel, m->dir, m->duty);
-}
-
-struct motor_data {
-	uint32_t timestamp;
-	struct {
-		uint32_t count;
-		uint16_t period;
-		uint16_t duty;
-	} motors[2];
-};
-
-void tim3_isr(void)
-{
-	timer_clear_flag(TIM3, TIM_SR_UIF);
-	motor_tick(&motors[HBRIDGE_A]);
-	motor_tick(&motors[HBRIDGE_B]);
 
 	struct spi_pl_packet *pkt = spi_alloc_packet();
 	if (pkt) {
 		struct motor_data *d = (struct motor_data *)pkt->data;
 		pkt->type = 15;
 		d->timestamp = msTicks;
-
-		d->motors[0].count = motors[0].count;
-		d->motors[0].period = motors[0].period > 0xffff ? 0 : motors[0].period;
-		d->motors[0].duty = motors[0].duty;
-
-		d->motors[1].count = motors[1].count;
-		d->motors[1].period = motors[1].period > 0xffff ? 0 : motors[1].period;
-		d->motors[1].duty = motors[1].duty;
+		d->channel = m->channel;
+		d->duty = m->duty;
+		d->period = m->period;
+		d->count = m->count;
 
 		spi_send_packet(pkt);
 	}
+}
+
+void tim3_isr(void)
+{
+	timer_clear_flag(TIM3, TIM_SR_UIF);
+	motor_tick(&motors[HBRIDGE_A]);
+	motor_tick(&motors[HBRIDGE_B]);
 }
 
 void tim4_isr(void)
