@@ -34,6 +34,7 @@ struct period_counter_channel {
 	uint32_t sem;
 
 	uint32_t period;
+	uint32_t total;
 };
 
 struct period_counter {
@@ -49,5 +50,7 @@ void period_counter_init(struct period_counter *pc);
 void period_counter_enable(struct period_counter *pc, enum pc_channel ch);
 void period_counter_disable(struct period_counter *pc, enum pc_channel ch);
 uint32_t period_counter_get(struct period_counter *pc, enum pc_channel ch);
+uint32_t period_counter_get_total(struct period_counter *pc, enum pc_channel ch);
+void period_counter_reset_total(struct period_counter *pc, enum pc_channel ch);
 
 #endif /* __PC_H__ */

@@ -18,6 +18,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include <libopencm3/cm3/cortex.h>
 #include <libopencm3/cm3/nvic.h>
 #include <libopencm3/stm32/gpio.h>
 
@@ -40,6 +41,7 @@ void period_counter_update(struct period_counter *pc)
 		c->period = ((c->ovf << 16) + cc) - c->cnt;
 		c->ovf = 0;
 		c->cnt = cc;
+		c->total++;
 		c->sem = true;
 
 		timer_clear_flag(pc->timer, TIM_SR_CC1IF);
@@ -51,6 +53,7 @@ void period_counter_update(struct period_counter *pc)
 		c->period = ((c->ovf << 16) + cc) - c->cnt;
 		c->ovf = 0;
 		c->cnt = cc;
+		c->total++;
 		c->sem = true;
 
 		timer_clear_flag(pc->timer, TIM_SR_CC2IF);
@@ -157,4 +160,41 @@ uint32_t period_counter_get(struct period_counter *pc, enum pc_channel ch)
 	}
 
 	return 0;
+}
+
+uint32_t period_counter_get_total(struct period_counter *pc, enum pc_channel ch)
+{
+	struct period_counter_channel *c;
+	switch (ch) {
+	case PC_CH1:
+		c = &pc->ch1;
+		break;
+	case PC_CH2:
+		c = &pc->ch2;
+		break;
+	default:
+		c = NULL;
+	}
+
+	return c->total;
+}
+
+void period_counter_reset_total(struct period_counter *pc, enum pc_channel ch)
+{
+	struct period_counter_channel *c;
+	switch (ch) {
+	case PC_CH1:
+		c = &pc->ch1;
+		break;
+	case PC_CH2:
+		c = &pc->ch2;
+		break;
+	default:
+		c = NULL;
+	}
+
+	{
+		CM_ATOMIC_BLOCK();
+		c->total = 0;
+	}
 }
