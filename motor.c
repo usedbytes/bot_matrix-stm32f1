@@ -154,6 +154,23 @@ void motor_set_speed(enum hbridge_channel channel, enum direction dir,
 
 	if (speed == 0) {
 		period_counter_disable(&pc, m->pc_channel);
+
+		if (m->setpoint != 0) {
+			struct spi_pl_packet *pkt = spi_alloc_packet();
+			if (pkt) {
+				struct motor_data *d = (struct motor_data *)pkt->data;
+				pkt->type = 15;
+				d->timestamp = msTicks;
+				d->channel = m->channel;
+				d->direction = m->dir;
+				d->duty = 0;
+				d->period = 0;
+				d->count = m->count;
+
+				spi_send_packet(pkt);
+			}
+		}
+
 		m->dir = dir;
 		m->setpoint = 0;
 		controller_set(&m->controller, 0);
