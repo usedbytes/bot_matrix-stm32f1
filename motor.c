@@ -45,7 +45,7 @@ struct motor {
 struct motor_data {
 	uint32_t timestamp;
 	uint8_t channel;
-	uint8_t pad;
+	uint8_t direction;
 	uint16_t duty;
 	uint32_t period;
 	int32_t count;
@@ -270,6 +270,7 @@ static void motor_tick(struct motor *m)
 		pkt->type = 15;
 		d->timestamp = msTicks;
 		d->channel = m->channel;
+		d->direction = m->dir;
 		d->duty = m->duty;
 		d->period = m->period;
 		d->count = m->count;
