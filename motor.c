@@ -184,22 +184,9 @@ void motor_set_speed(enum hbridge_channel channel, enum direction dir,
 		m->changing_direction = 1;
 	}
 
-	if (speed > 100)
-		speed = 100;
-
-	/*
-	 * XXX: Apply the speed/percentage function - should be abstracted?
-	 * This gives a range 0-100% of around 50-1000
-	 */
-	int y = (((int)(((50 - 1000) / 100.0f) * 1024)) * speed) >> 10;
-	y += 1000;
-	if (y < 50) {
-		y = 50;
-	}
-
 	m->dir = dir;
-	m->setpoint = y;
-	controller_set(&m->controller, y);
+	m->setpoint = speed;
+	controller_set(&m->controller, speed);
 }
 
 void motor_disable_loop()
