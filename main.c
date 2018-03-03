@@ -54,6 +54,21 @@ static void setup_gpio(void) {
 	GPIOC_CRH |= (GPIO_MODE_OUTPUT_2_MHZ << ((13 - 8) * 4));
 }
 
+struct time_sync {
+	uint32_t cookie;
+	uint32_t board_millis;
+	int64_t real_nanos;
+};
+
+static void time_sync_process_packet(struct spi_pl_packet *pkt)
+{
+	struct time_sync *sync = (struct time_sync *)pkt->data;
+	if ((pkt->type != 0x1) || (pkt->flags & SPI_FLAG_ERROR))
+		return;
+
+	sync->board_millis = msTicks;
+}
+
 static void ep0xfe_process_packet(struct spi_pl_packet *pkt)
 {
 	if ((pkt->type != 0xfe) || (pkt->flags & SPI_FLAG_ERROR))
@@ -112,6 +127,11 @@ int main(void)
 				continue;
 			}
 			switch (pkt->type) {
+				case 0x1:
+					time_sync_process_packet(pkt);
+					/* Bounce it back */
+					spi_send_packet(pkt);
+					break;
 				case EP_MOTORS:
 					motor_process_packet(pkt);
 					spi_free_packet(pkt);
