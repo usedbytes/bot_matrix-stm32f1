@@ -1,6 +1,8 @@
 TARGET = main
 
-SOURCES = main.c usb_cdc.c stdio.c spi.c util.c systick.c pwm.c counter.c hbridge.c period_counter.c controller.c queue.c motor.c log.c log_spi.c
+SOURCES = main.c usb_cdc.c stdio.c spi.c util.c systick.c pwm.c counter.c hbridge.c period_counter.c controller.c queue.c motor.c log.c
+#SOURCES += log_stdio.c
+SOURCES += log_spi.c
 
 LINKER_SCRIPT=stm32f103-bl20.ld
 
