@@ -89,9 +89,70 @@ void i2c_init(void) {
 	i2c_init_dma();
 }
 
-void i2c_swrst(void)
+/*
+ * There's a bug with the analogue filters, this is the workaround suggested
+ * in the errata document. The i2c_init() at the end is meant to be only
+ * a SWRST, but that doesn't seem to work.
+ */
+static void i2c_errata_2_13_7_reset(void)
 {
-	I2C_CR1(dev) = I2C_CR1_SWRST;
+	uint16_t idr;
+
+	i2c_peripheral_disable(dev);
+	gpio_set_mode(GPIOB, GPIO_MODE_OUTPUT_50_MHZ,
+		      GPIO_CNF_OUTPUT_OPENDRAIN,
+		      GPIO_I2C2_SCL | GPIO_I2C2_SDA);
+
+	GPIO_ODR(GPIOB) |= GPIO_I2C2_SCL | GPIO_I2C2_SDA;
+	delay_us(1);
+	idr = gpio_get(GPIOB, GPIO_I2C2_SCL | GPIO_I2C2_SDA);
+	if ((idr & (GPIO_I2C2_SCL | GPIO_I2C2_SDA)) != (GPIO_I2C2_SCL | GPIO_I2C2_SDA)) {
+		log_err("Didn't set high. idr: %08lx\r\n", (uint32_t)idr);
+	}
+
+	GPIO_ODR(GPIOB) &= ~(GPIO_I2C2_SDA);
+	delay_us(1);
+	idr = gpio_get(GPIOB, GPIO_I2C2_SDA);
+	if (idr & GPIO_I2C2_SDA) {
+		log_err("Didn't set SDA low. idr: %08lx\r\n", (uint32_t)idr);
+	}
+
+	GPIO_ODR(GPIOB) &= ~(GPIO_I2C2_SCL);
+	delay_us(1);
+	idr = gpio_get(GPIOB, GPIO_I2C2_SCL);
+	if (idr & GPIO_I2C2_SCL) {
+		log_err("Didn't set SCL low. idr: %08lx\r\n", (uint32_t)idr);
+	}
+
+	GPIO_ODR(GPIOB) |= GPIO_I2C2_SDA;
+	delay_us(1);
+	idr = gpio_get(GPIOB, GPIO_I2C2_SDA);
+	if (!(idr & GPIO_I2C2_SDA)) {
+		log_err("Didn't set SDA high. idr: %08lx\r\n", (uint32_t)idr);
+	}
+
+	GPIO_ODR(GPIOB) |= GPIO_I2C2_SCL;
+	delay_us(1);
+	idr = gpio_get(GPIOB, GPIO_I2C2_SCL);
+	if (!(idr & GPIO_I2C2_SCL)) {
+		log_err("Didn't set SCL high. idr: %08lx\r\n", (uint32_t)idr);
+	}
+
+	gpio_set_mode(GPIOB, GPIO_MODE_OUTPUT_50_MHZ,
+		      GPIO_CNF_OUTPUT_ALTFN_OPENDRAIN,
+		      GPIO_I2C2_SCL | GPIO_I2C2_SDA);
+
+	i2c_init();
+}
+
+void i2c_reset_bus(void)
+{
+	/*
+	 * This full reset procedure shouldn't be needed for all bus errors -
+	 * but it does seem to be effective at recovering from errors.
+	 */
+	i2c_errata_2_13_7_reset();
+
 }
 
 static uint32_t i2c_wait_for(uint32_t bit)
