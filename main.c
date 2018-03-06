@@ -19,6 +19,8 @@
 
 #include "systick.h"
 
+#define ARRAY_SIZE(_x) ((sizeof(_x) / sizeof(_x[0])))
+
 static void setup_irq_priorities(void)
 {
 	struct map_entry {
@@ -75,6 +77,33 @@ static void ep0xfe_process_packet(struct spi_pl_packet *pkt)
 		return;
 
 	scb_reset_system();
+}
+
+#define EP_GPIO 19
+struct gpio_set_cmd {
+	uint8_t port;
+	uint8_t pin;
+	uint8_t state;
+};
+
+static void gpio_set_process_packet(struct spi_pl_packet *pkt)
+{
+	const uint32_t ports[] = { GPIOA, GPIOB, GPIOC };
+	struct gpio_set_cmd *cmd = (struct gpio_set_cmd *)pkt->data;
+
+	if ((pkt->type != EP_GPIO) || (pkt->flags & SPI_FLAG_ERROR))
+		return;
+
+	if (cmd->port >= ARRAY_SIZE(ports) || cmd->pin > 15) {
+		log_err("GPIO out of range (Port %d, pin %d)\n", cmd->port, cmd->pin);
+		return;
+	}
+
+	if (cmd->state) {
+		gpio_set(ports[cmd->port], (1 << cmd->pin));
+	} else {
+		gpio_clear(ports[cmd->port], (1 << cmd->pin));
+	}
 }
 
 #define EP_MOTORS 18
@@ -134,6 +163,10 @@ int main(void)
 					break;
 				case EP_MOTORS:
 					motor_process_packet(pkt);
+					spi_free_packet(pkt);
+					break;
+				case EP_GPIO:
+					gpio_set_process_packet(pkt);
 					spi_free_packet(pkt);
 					break;
 				case 0xfe:
