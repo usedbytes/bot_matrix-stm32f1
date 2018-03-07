@@ -1,8 +1,18 @@
 TARGET = main
 
-SOURCES = main.c usb_cdc.c stdio.c spi.c util.c systick.c pwm.c counter.c hbridge.c period_counter.c controller.c queue.c motor.c log.c
+SOURCES = main.c usb_cdc.c stdio.c spi.c util.c systick.c pwm.c counter.c hbridge.c period_counter.c controller.c queue.c motor.c log.c vl53l0x.c
 #SOURCES += log_stdio.c
 SOURCES += log_spi.c
+
+VL53L0X_SOURCES = vl53l0x/core/src/vl53l0x_api.c \
+	vl53l0x/core/src/vl53l0x_api_calibration.c \
+	vl53l0x/core/src/vl53l0x_api_core.c \
+	vl53l0x/core/src/vl53l0x_api_ranging.c \
+	vl53l0x/core/src/vl53l0x_api_strings.c
+
+VL53L0X_INC = -Ivl53l0x/core/inc -Ivl53l0x/platform/inc
+
+SOURCES += $(VL53L0X_SOURCES)
 
 LINKER_SCRIPT=stm32f103-bl20.ld
 
@@ -21,6 +31,7 @@ FP_FLAGS ?= -msoft-float
 ARCH_FLAGS = -mthumb -mcpu=cortex-m3 $(FP_FLAGS) -mfix-cortex-m3-ldrd
 CFLAGS += $(DEBUG) $(OPT)
 CFLAGS += $(ARCH_FLAGS)
+CFLAGS += $(VL53L0X_INC)
 CFLAGS += -Wall -Wextra -Wshadow -Wimplicit-function-declaration
 CFLAGS += -Wredundant-decls -Wmissing-prototypes -Wstrict-prototypes
 CFLAGS += -fno-common -ffunction-sections -fdata-sections -fno-strict-aliasing
