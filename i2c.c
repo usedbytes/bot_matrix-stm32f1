@@ -225,9 +225,6 @@ int i2c_write(uint8_t addr_7b, uint8_t reg, uint8_t *data, unsigned int len)
 	}
 
 done:
-	if (ret) {
-		log_printf("Write fail %x", ret);
-	}
 	i2c_send_stop(dev);
 
 	return ret;
