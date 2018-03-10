@@ -276,6 +276,41 @@ int i2c_read_byte(uint8_t addr_7b, uint8_t reg, uint8_t *data)
 	return 0;
 }
 
+int i2c_detect(uint8_t addr_7b)
+{
+	int ret;
+	int present = 0;
+	uint32_t wait;
+
+	ret = i2c_wait_idle();
+	if (ret) {
+		return ret;
+	}
+
+	i2c_send_start(dev);
+
+	ret = i2c_wait_for(I2C_SR1_SB);
+	if (ret) {
+		return ret;
+	}
+
+	//while ((I2C_SR2(dev) & (I2C_SR2_MSL | I2C_SR2_BUSY)));
+
+	/* Send destination address. */
+	i2c_send_7bit_address(dev, addr_7b, I2C_WRITE);
+	wait = i2c_wait_for(I2C_SR1_ADDR);
+	if (!wait) {
+		present = 1;
+	} else if (wait == (uint32_t)(~I2C_SR1_ADDR)) {
+		present = 0;
+	}
+	(void)I2C_SR2(dev);
+
+	i2c_send_stop(dev);
+
+	return ret ? ret : (!!present);
+}
+
 /*
  * For more than 1 byte, use DMA.
  * Overhead of setup could be a bit much, but it avoids needing to do the
