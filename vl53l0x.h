@@ -7,10 +7,14 @@ struct vl53l0x_dev {
 	struct VL53L0X_Dev pal_dev;
 	uint8_t addr_7b;
 
+	uint32_t xshut_port;
+	uint16_t xshut_pin;
+
 	bool addr_set : 1;
 };
 
 int vl53l0x_init(struct vl53l0x_dev *dev);
+int vl53l0x_init_array(struct vl53l0x_dev *devs, unsigned ndevs);
 int vl53l0x_set_addr(struct vl53l0x_dev *dev, uint8_t new_addr_7b);
 int vl53l0x_get_platform_error(void);
 

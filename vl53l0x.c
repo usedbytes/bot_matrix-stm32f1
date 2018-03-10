@@ -21,6 +21,8 @@
 #include "util.h"
 #include "vl53l0x.h"
 
+#include <libopencm3/stm32/gpio.h>
+
 #include "vl53l0x/core/inc/vl53l0x_api.h"
 #include "vl53l0x/core/inc/vl53l0x_def.h"
 #include "vl53l0x/platform/inc/vl53l0x_platform.h"
@@ -31,6 +33,47 @@ static int vl53l0x_platform_errno;
 
 #define to_dev(_Dev) ((struct vl53l0x_dev *)_Dev)
 
+int vl53l0x_init_array(struct vl53l0x_dev *devs, unsigned ndevs)
+{
+	int ret;
+	unsigned int i, j;
+	unsigned int ngpios = 0;
+
+	for (i = 0; i < ndevs; i++) {
+		if (devs[i].xshut_port) {
+			ngpios++;
+			gpio_set_mode(devs[i].xshut_port, GPIO_MODE_OUTPUT_50_MHZ,
+					GPIO_CNF_OUTPUT_OPENDRAIN, devs[i].xshut_pin);
+			gpio_clear(devs[i].xshut_port, devs[i].xshut_pin);
+		}
+		for (j = 0; j < ndevs; j++) {
+			if (j == i) {
+				continue;
+			}
+			if (devs[i].addr_7b == devs[j].addr_7b) {
+				log_err("Address %2x conflict. Devices %d and %d",
+					devs[i].addr_7b, i, j);
+				return -ENOMEM;
+			}
+		}
+	}
+
+	if (ngpios < ndevs - 1) {
+		log_err("Not enough gpios.");
+		return -EXDEV;
+	}
+
+	for (i = 0; i < ndevs; i++) {
+		ret = vl53l0x_init(&devs[i]);
+		if (ret) {
+			log_err("Init failed on dev %d", i);
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
 int vl53l0x_init(struct vl53l0x_dev *dev)
 {
 	VL53L0X_DEV pal_dev = &dev->pal_dev;
@@ -40,6 +83,10 @@ int vl53l0x_init(struct vl53l0x_dev *dev)
 	VL53L0X_DeviceInfo_t dev_info;
 	uint32_t count;
 	uint8_t vhv, phase, type;
+
+	if (dev->xshut_port) {
+		gpio_set(dev->xshut_port, dev->xshut_pin);
+	}
 
 	ret = i2c_detect(dev->addr_7b);
 	if (ret < 0) {
