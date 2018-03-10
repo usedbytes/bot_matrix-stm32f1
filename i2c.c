@@ -162,14 +162,17 @@ static uint32_t i2c_wait_for(uint32_t bit)
 	while (i++ < 1000) {
 		sr = I2C_SR1(dev);
 		if (sr & bit) {
+			I2C_SR1(dev) = 0;
 			return 0;
 		}
 		if (sr & (I2C_SR1_AF | I2C_SR1_ARLO | I2C_SR1_BERR)) {
+			I2C_SR1(dev) = 0;
 			return sr;
 		};
 		delay_us(1);
 	}
 
+	I2C_SR1(dev) = 0;
 	return ~bit;
 }
 
