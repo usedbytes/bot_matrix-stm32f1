@@ -1,8 +1,8 @@
 TARGET = main
 
-SOURCES = main.c usb_cdc.c stdio.c spi.c util.c systick.c pwm.c counter.c hbridge.c period_counter.c controller.c queue.c motor.c log.c vl53l0x.c i2c.c
-#SOURCES += log_stdio.c
-SOURCES += log_spi.c
+SOURCES = main.c usb_cdc.c stdio.c util.c systick.c queue.c log.c vl53l0x.c i2c.c
+SOURCES += log_stdio.c
+#SOURCES += log_spi.c
 
 VL53L0X_SOURCES = vl53l0x/core/src/vl53l0x_api.c \
 	vl53l0x/core/src/vl53l0x_api_calibration.c \
