@@ -23,5 +23,6 @@ void __log_func(enum log_level level, const char *str, unsigned int nargs, va_li
 	(void)(nargs);
 	printf("<%d> ", level);
 	vprintf(str, args);
+	puts("\r\n");
 	fflush(stdout);
 }
