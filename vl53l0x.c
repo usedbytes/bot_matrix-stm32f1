@@ -27,6 +27,8 @@
 
 static int vl53l0x_platform_errno;
 
+#define VL53L0X_DEFAULT_ADDR 0x29
+
 #define to_dev(_Dev) ((struct vl53l0x_dev *)_Dev)
 
 int vl53l0x_init(struct vl53l0x_dev *dev)
@@ -38,6 +40,13 @@ int vl53l0x_init(struct vl53l0x_dev *dev)
 	VL53L0X_DeviceInfo_t dev_info;
 	uint32_t count;
 	uint8_t vhv, phase, type;
+
+	ret = i2c_write_byte(VL53L0X_DEFAULT_ADDR, VL53L0X_REG_I2C_SLAVE_DEVICE_ADDRESS, dev->addr_7b << 1);
+	if (ret) {
+		vl53l0x_platform_errno = ret;
+		log_err("SetAddress: %x",(uint32_t)ret);
+		return VL53L0X_ERROR_CONTROL_INTERFACE;
+	}
 
 	err = VL53L0X_DataInit(pal_dev);
 	if (err) {
