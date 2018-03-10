@@ -23,6 +23,7 @@
 
 void panic(void);
 
+void trace(int num);
 void blink_us(uint32_t ontime);
 void led_on(void);
 void led_off(void);

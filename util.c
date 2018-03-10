@@ -18,7 +18,13 @@
 #include <libopencm3/cm3/nvic.h>
 
 #include "util.h"
+#include "log.h"
 #include "systick.h"
+
+void trace(int num)
+{
+	log_dbg("%d: %d\n", msTicks, num);
+}
 
 void led_on(void)
 {
