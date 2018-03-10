@@ -46,6 +46,7 @@ LDFLAGS += --static -nostartfiles
 LDFLAGS += -T$(LINKER_SCRIPT)
 LDFLAGS += $(ARCH_FLAGS)
 LDFLAGS += -Wl,-Map=$(*).map
+LDFLAGS += -Wl,-Map=main.map
 LDFLAGS += -Wl,--gc-sections
 LDLIBS += -l$(LIBNAME)
 LDLIBS += -Wl,--start-group -lc -lgcc -lnosys -Wl,--end-group
