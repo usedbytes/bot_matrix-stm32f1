@@ -159,7 +159,7 @@ static uint32_t i2c_wait_for(uint32_t bit)
 {
 	int i = 0;
 	uint32_t sr;
-	while (i++ < 10) {
+	while (i++ < 1000) {
 		sr = I2C_SR1(dev);
 		if (sr & bit) {
 			return 0;
@@ -167,7 +167,7 @@ static uint32_t i2c_wait_for(uint32_t bit)
 		if (sr & (I2C_SR1_AF | I2C_SR1_ARLO | I2C_SR1_BERR)) {
 			return sr;
 		};
-		delay_us(100);
+		delay_us(1);
 	}
 
 	return ~bit;
@@ -177,12 +177,12 @@ static int i2c_wait_idle(void)
 {
 	int i = 0;
 	uint32_t sr;
-	while (i++ < 10) {
+	while (i++ < 1000) {
 		sr = I2C_SR2(dev);
 		if (!(sr & I2C_SR2_BUSY)) {
 			return 0;
 		}
-		delay_us(100);
+		delay_us(1);
 	}
 
 	return -EBUSY;
