@@ -1,3 +1,4 @@
+#include <stdbool.h>
 
 #include "vl53l0x/core/inc/vl53l0x_def.h"
 #include "vl53l0x/platform/inc/vl53l0x_platform.h"
@@ -5,9 +6,12 @@
 struct vl53l0x_dev {
 	struct VL53L0X_Dev pal_dev;
 	uint8_t addr_7b;
+
+	bool addr_set : 1;
 };
 
 int vl53l0x_init(struct vl53l0x_dev *dev);
+int vl53l0x_set_addr(struct vl53l0x_dev *dev, uint8_t new_addr_7b);
 int vl53l0x_get_platform_error(void);
 
 int vl53l0x_perform_ref_cal(struct vl53l0x_dev *dev, uint8_t *vhv, uint8_t *phase);

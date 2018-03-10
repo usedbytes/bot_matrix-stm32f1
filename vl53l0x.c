@@ -41,12 +41,17 @@ int vl53l0x_init(struct vl53l0x_dev *dev)
 	uint32_t count;
 	uint8_t vhv, phase, type;
 
-	ret = i2c_write_byte(VL53L0X_DEFAULT_ADDR, VL53L0X_REG_I2C_SLAVE_DEVICE_ADDRESS, dev->addr_7b << 1);
-	if (ret) {
-		vl53l0x_platform_errno = ret;
-		log_err("SetAddress: %x",(uint32_t)ret);
-		return VL53L0X_ERROR_CONTROL_INTERFACE;
+	ret = i2c_detect(dev->addr_7b);
+	if (ret < 0) {
+		return err;
+	} else if (!ret && dev->addr_7b != VL53L0X_DEFAULT_ADDR) {
+		dev->addr_set = false;
+		ret = vl53l0x_set_addr(dev, dev->addr_7b);
+		if (ret) {
+			return ret;
+		}
 	}
+	dev->addr_set = true;
 
 	err = VL53L0X_DataInit(pal_dev);
 	if (err) {
@@ -77,6 +82,24 @@ int vl53l0x_init(struct vl53l0x_dev *dev)
 		return ret;
 	}
 	log_info("SPAD: %d ap: %d\n", count, (uint32_t)type);
+
+	return 0;
+}
+
+int vl53l0x_set_addr(struct vl53l0x_dev *dev, uint8_t new_addr_7b)
+{
+	uint8_t old_addr = dev->addr_set ? dev->addr_7b : VL53L0X_DEFAULT_ADDR;
+	int ret;
+
+	ret = i2c_write_byte(old_addr, VL53L0X_REG_I2C_SLAVE_DEVICE_ADDRESS, new_addr_7b);
+	if (ret) {
+		vl53l0x_platform_errno = ret;
+		log_err("SetAddress: %x",(uint32_t)ret);
+		return VL53L0X_ERROR_CONTROL_INTERFACE;
+	}
+
+	dev->addr_7b = new_addr_7b;
+	dev->addr_set = true;
 
 	return 0;
 }
