@@ -20,6 +20,8 @@
 
 void i2c_init(void);
 void i2c_reset_bus(void);
+/* Returns 1 if present, 0 if not, -1 on error */
+int i2c_detect(uint8_t addr_7b);
 
 int i2c_write(uint8_t addr_7b, uint8_t reg, uint8_t *data, unsigned int len);
 int i2c_read(uint8_t addr_7b, uint8_t reg, uint8_t *data, unsigned int len);

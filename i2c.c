@@ -159,17 +159,20 @@ static uint32_t i2c_wait_for(uint32_t bit)
 {
 	int i = 0;
 	uint32_t sr;
-	while (i++ < 10) {
+	while (i++ < 1000) {
 		sr = I2C_SR1(dev);
 		if (sr & bit) {
+			I2C_SR1(dev) = 0;
 			return 0;
 		}
 		if (sr & (I2C_SR1_AF | I2C_SR1_ARLO | I2C_SR1_BERR)) {
+			I2C_SR1(dev) = 0;
 			return sr;
 		};
-		delay_us(100);
+		delay_us(1);
 	}
 
+	I2C_SR1(dev) = 0;
 	return ~bit;
 }
 
@@ -177,12 +180,12 @@ static int i2c_wait_idle(void)
 {
 	int i = 0;
 	uint32_t sr;
-	while (i++ < 10) {
+	while (i++ < 1000) {
 		sr = I2C_SR2(dev);
 		if (!(sr & I2C_SR2_BUSY)) {
 			return 0;
 		}
-		delay_us(100);
+		delay_us(1);
 	}
 
 	return -EBUSY;
@@ -225,9 +228,6 @@ int i2c_write(uint8_t addr_7b, uint8_t reg, uint8_t *data, unsigned int len)
 	}
 
 done:
-	if (ret) {
-		log_printf("Write fail %x", ret);
-	}
 	i2c_send_stop(dev);
 
 	return ret;
@@ -274,6 +274,41 @@ int i2c_read_byte(uint8_t addr_7b, uint8_t reg, uint8_t *data)
 	*data = i2c_get_data(dev);
 
 	return 0;
+}
+
+int i2c_detect(uint8_t addr_7b)
+{
+	int ret;
+	int present = 0;
+	uint32_t wait;
+
+	ret = i2c_wait_idle();
+	if (ret) {
+		return ret;
+	}
+
+	i2c_send_start(dev);
+
+	ret = i2c_wait_for(I2C_SR1_SB);
+	if (ret) {
+		return ret;
+	}
+
+	//while ((I2C_SR2(dev) & (I2C_SR2_MSL | I2C_SR2_BUSY)));
+
+	/* Send destination address. */
+	i2c_send_7bit_address(dev, addr_7b, I2C_WRITE);
+	wait = i2c_wait_for(I2C_SR1_ADDR);
+	if (!wait) {
+		present = 1;
+	} else if (wait == (uint32_t)(~I2C_SR1_ADDR)) {
+		present = 0;
+	}
+	(void)I2C_SR2(dev);
+
+	i2c_send_stop(dev);
+
+	return ret ? ret : (!!present);
 }
 
 /*
