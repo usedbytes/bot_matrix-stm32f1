@@ -124,7 +124,6 @@ int main(void)
 	systick_init();
 	setup_gpio();
 
-	usb_cdc_init();
 	spi_init();
 	spi_slave_enable(SPI1);
 
