@@ -24,6 +24,8 @@
 struct vl53l0x_dev {
 	struct VL53L0X_Dev pal_dev;
 	uint8_t addr_7b;
+	uint8_t id;
+	uint8_t status;
 
 	uint32_t xshut_port;
 	uint16_t xshut_pin;

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Brian Starkey <stark3y@gmail.com>
+ * Copyright (C) 2018 Brian Starkey <stark3y@gmail.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -14,20 +14,17 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef __UTIL_H__
-#define __UTIL_H__
+#ifndef __SENSORS_H__
+#define __SENSORS_H__
 
-#include <stdint.h>
+#include "spi.h"
 
-#include "systick.h"
+#define EP_SENSORS_REQ 24
+#define EP_SENSORS_REP 25
 
-#define ARRAY_SIZE(_x) ((sizeof(_x) / sizeof(_x[0])))
+void sensors_init(void);
 
-void panic(void);
+void sensors_tick(void);
+void sensors_handle_packet(struct spi_pl_packet *pkt);
 
-void trace(int num);
-void blink_us(uint32_t ontime);
-void led_on(void);
-void led_off(void);
-
-#endif /* __UTIL_H__ */
+#endif /* __SENSORS_H__ */

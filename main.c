@@ -11,15 +11,17 @@
 #include <stdarg.h>
 
 #include "hbridge.h"
+#include "i2c.h"
 #include "log.h"
 #include "motor.h"
 #include "pwm.h"
+#include "sensors.h"
 #include "spi.h"
 #include "usb_cdc.h"
+#include "util.h"
+#include "vl53l0x.h"
 
 #include "systick.h"
-
-#define ARRAY_SIZE(_x) ((sizeof(_x) / sizeof(_x[0])))
 
 static void setup_irq_priorities(void)
 {
@@ -121,11 +123,11 @@ int main(void)
 	rcc_periph_clock_enable(RCC_SPI1);
 	rcc_periph_clock_enable(RCC_DMA1);
 
+	setup_irq_priorities();
 	systick_init();
-	setup_gpio();
+	delay_ms(1000);
 
-	spi_init();
-	spi_slave_enable(SPI1);
+	setup_gpio();
 
 	gpio_set_mode(GPIOC, GPIO_MODE_OUTPUT_2_MHZ,
 		      GPIO_CNF_OUTPUT_PUSHPULL,
@@ -135,12 +137,18 @@ int main(void)
 
 	gpio_set(GPIOC, GPIO13);
 
+	//usb_cdc_init();
+	//while(!usb_usart_dtr());
+
+	i2c_init();
+	sensors_init();
+	spi_init();
+	spi_slave_enable(SPI1);
+
 	motor_init();
 	motor_enable_loop();
 	motor_set_speed(HBRIDGE_A, DIRECTION_FWD, 0);
 	motor_set_speed(HBRIDGE_B, DIRECTION_FWD, 0);
-
-	setup_irq_priorities();
 
 	struct spi_pl_packet *pkt;
 	uint32_t time = msTicks;
@@ -168,6 +176,10 @@ int main(void)
 					gpio_set_process_packet(pkt);
 					spi_free_packet(pkt);
 					break;
+				case EP_SENSORS_REQ:
+					sensors_handle_packet(pkt);
+					spi_free_packet(pkt);
+					break;
 				case 0xfe:
 					ep0xfe_process_packet(pkt);
 					spi_free_packet(pkt);
@@ -178,9 +190,9 @@ int main(void)
 			}
 		}
 
-		if (msTicks - time >= 100) {
+		if (msTicks - time >= 10) {
 			time = msTicks;
-			// Do something periodically...
+			sensors_tick();
 		}
 	}
 

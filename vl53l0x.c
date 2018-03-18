@@ -29,6 +29,12 @@
 
 static int vl53l0x_platform_errno;
 
+enum dev_status {
+	STATUS_IDLE = 0,
+	STATUS_STARTED,
+	STATUS_STOPPING,
+};
+
 #define VL53L0X_DEFAULT_ADDR 0x29
 
 #define to_dev(_Dev) ((struct vl53l0x_dev *)_Dev)
@@ -131,6 +137,14 @@ int vl53l0x_init(struct vl53l0x_dev *dev)
 	}
 	log_info("SPAD: %d ap: %d\n", count, (uint32_t)type);
 
+	/*
+	ret = VL53L0X_SetLimitCheckValue(&dev->pal_dev, VL53L0X_CHECKENABLE_SIGMA_FINAL_RANGE, 50);
+	if (ret) {
+		log_err("SetSigma: %x", (uint32_t)ret);
+		return ret;
+	}
+	*/
+
 	return 0;
 }
 
@@ -214,11 +228,25 @@ int vl53l0x_set_measurement_mode(struct vl53l0x_dev *dev, VL53L0X_DeviceModes mo
 
 int vl53l0x_start_measurement(struct vl53l0x_dev *dev)
 {
+	/*
+	if (dev->status != STATUS_IDLE) {
+		return -EBUSY;
+	}
+	*/
+	dev->status = STATUS_STARTED;
+
 	return VL53L0X_StartMeasurement(&dev->pal_dev);
 }
 
 int vl53l0x_stop_measurement(struct vl53l0x_dev *dev)
 {
+	/*
+	if (dev->status != STATUS_STARTED) {
+		return -EALREADY;
+	}
+	*/
+	dev->status = STATUS_STOPPING;
+
 	return VL53L0X_StopMeasurement(&dev->pal_dev);
 }
 
@@ -227,12 +255,19 @@ int vl53l0x_check_stop_completed(struct vl53l0x_dev *dev)
 	VL53L0X_Error err;
 	uint32_t busy;
 
+	/*
+	if (dev->status != STATUS_STOPPING) {
+		return -EALREADY;
+	}
+	*/
+
 	err = VL53L0X_GetStopCompletedStatus(&dev->pal_dev, &busy);
 	if (err) {
 		return err;
 	}
 
 	if (!busy) {
+		dev->status = STATUS_IDLE;
 		return 1;
 	}
 
@@ -244,12 +279,23 @@ int vl53l0x_check_measurement_ready(struct vl53l0x_dev *dev)
 	VL53L0X_Error err;
 	uint8_t ready;
 
+	/*
+	if (dev->status != STATUS_STARTED) {
+		return -EINVAL;
+	}
+	*/
+
 	err = VL53L0X_GetMeasurementDataReady(&dev->pal_dev, &ready);
 	if (err) {
 		return err;
 	}
 
 	if (ready) {
+		VL53L0X_DeviceModes mode;
+		VL53L0X_GetDeviceMode(&dev->pal_dev, &mode);
+		if (mode == VL53L0X_DEVICEMODE_SINGLE_RANGING) {
+			dev->status = STATUS_IDLE;
+		}
 		return 1;
 	}
 
